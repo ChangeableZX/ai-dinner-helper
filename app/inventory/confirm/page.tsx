@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,8 +48,12 @@ export default function ConfirmPage() {
   const [openPickerItemId, setOpenPickerItemId] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [ready, setReady] = useState(false);
+  const initialized = useRef(false);
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     const raw = sessionStorage.getItem('ocr_pending_result');
     sessionStorage.removeItem('ocr_pending_result');
     if (!raw) { router.replace('/inventory/upload'); return; }

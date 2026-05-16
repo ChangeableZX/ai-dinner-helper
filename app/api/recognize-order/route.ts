@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ORDER_RECOGNIZE_SYSTEM_PROMPT } from '@/lib/order-recognize-prompt';
+import { recognizeText } from '@/lib/baidu-ocr';
+import { ORDER_PARSE_SYSTEM_PROMPT } from '@/lib/order-recognize-prompt';
 import { autoCategorize } from '@/lib/auto-categorize';
 import type { Category } from '@/types';
 
@@ -38,17 +39,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: '缺少图片数据' }, { status: 400 });
     }
 
+    // Mock 模式：无 API Key 或强制 mock 时跳过真实调用
     if (!process.env.OPENAI_API_KEY || process.env.MOCK_MODE === 'true') {
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1500));
       return NextResponse.json({ success: true, items: MOCK_ITEMS, warnings: [] });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    // === 第一步：百度 OCR 提取文字 ===
+    let ocrLines: string[];
+    try {
+      ocrLines = await recognizeText(imageBase64);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '未知错误';
+      console.error('[recognize-order] OCR error:', message);
+      // 百度 OCR 未配置时降级为 mock，避免阻断用户
+      if (message.includes('未配置')) {
+        await new Promise((r) => setTimeout(r, 1000));
+        return NextResponse.json({ success: true, items: MOCK_ITEMS, warnings: ['OCR 未配置，已返回示例数据'] });
+      }
+      return NextResponse.json(
+        { success: false, error: '图片识别失败，换张清晰的图试试' },
+        { status: 500 },
+      );
+    }
+
+    if (ocrLines.length === 0) {
+      return NextResponse.json({
+        success: true,
+        items: [],
+        warnings: ['图片里没识别到文字'],
+      });
+    }
+
+    const ocrText = ocrLines.join('\n');
+
+    // === 第二步：文本 LLM 解析为结构化食材 ===
+    const apiKey = process.env.OPENAI_API_KEY!;
     const baseURL = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-    const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
+    const timer = setTimeout(() => controller.abort(), 30_000);
 
     let res: Response;
     try {
@@ -61,17 +92,15 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: ORDER_RECOGNIZE_SYSTEM_PROMPT },
+            { role: 'system', content: ORDER_PARSE_SYSTEM_PROMPT },
             {
               role: 'user',
-              content: [
-                { type: 'text', text: '请识别这张订单截图里的食材。' },
-                { type: 'image_url', image_url: { url: imageBase64 } },
-              ],
+              content: `这是 OCR 识别出的订单文字，请提取其中的食材：\n\n${ocrText}`,
             },
           ],
+          response_format: { type: 'json_object' },
           temperature: 0.1,
-          max_tokens: 2000,
+          max_tokens: 1000,
         }),
         signal: controller.signal,
       });
@@ -81,11 +110,11 @@ export async function POST(req: NextRequest) {
 
     if (!res!.ok) {
       const errBody = await res!.text().catch(() => '');
-      console.error('[recognize-order] upstream error', res!.status, errBody.slice(0, 400));
+      console.error('[recognize-order] LLM error', res!.status, errBody.slice(0, 300));
       const status = res!.status;
       if (status === 401) throw new Error('API 密钥配置错误');
       if (status === 429) throw new Error('请求太频繁，稍后再试');
-      throw new Error(`识别失败（${status}），请重试`);
+      throw new Error(`解析失败（${status}），请重试`);
     }
 
     const data = await res!.json();
@@ -111,7 +140,12 @@ export async function POST(req: NextRequest) {
       }))
       .filter((item) => item.名称.length > 0);
 
-    return NextResponse.json({ success: true, items, warnings: parsed.warnings ?? [] });
+    return NextResponse.json({
+      success: true,
+      items,
+      warnings: parsed.warnings ?? [],
+      ...(process.env.NODE_ENV === 'development' ? { _debug_ocr_text: ocrText } : {}),
+    });
   } catch (err: unknown) {
     console.error('[recognize-order]', err);
     const msg = err instanceof Error ? err.message : '';

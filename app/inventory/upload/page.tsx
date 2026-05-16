@@ -114,7 +114,7 @@ export default function UploadPage() {
 
   if (phase === 'loading') {
     return (
-      <div className="fixed inset-0 bg-[#FAF7F2] flex flex-col items-center justify-center gap-6">
+      <div className="flex flex-col min-h-screen items-center justify-center gap-6 bg-[#FAF7F2]">
         <div className="text-8xl">{LOADING_EMOJIS[emojiIdx]}</div>
         <p
           className="text-base text-gray-600 text-center px-8 transition-opacity duration-150"
