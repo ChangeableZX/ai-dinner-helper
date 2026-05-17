@@ -28,7 +28,8 @@ async function callLLM(req: RecommendRequest): Promise<string> {
           { role: 'user', content: buildUserPrompt(req) },
         ],
         temperature: 0.7,
-        max_tokens: 4000,
+        max_tokens: 8000,
+        response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
     });
@@ -42,8 +43,16 @@ async function callLLM(req: RecommendRequest): Promise<string> {
   }
 
   const data = await res!.json();
-  const content: string = data.choices?.[0]?.message?.content ?? '';
-  console.log('[recommend] LLM responded, length:', content.length);
+  const choice = data.choices?.[0];
+  const content: string = choice?.message?.content ?? '';
+  const finishReason: string = choice?.finish_reason ?? 'unknown';
+
+  console.log(`[recommend] model=${model} finish_reason=${finishReason} length=${content.length}`);
+
+  if (finishReason === 'length') {
+    throw new Error(`LLM output truncated by max_tokens (finish_reason=length, model=${model}). Raise max_tokens or switch to a non-reasoning model.`);
+  }
+
   return content;
 }
 
