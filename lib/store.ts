@@ -14,6 +14,8 @@ interface AppStore {
   error: string | null;
   p0Warning: string | null;
   currentCookingStep: number;
+  doneRecipeIds: string[];
+  recentlyUsedIngredientNames: string[];
 
   // Derived convenience getter
   getIngredientNames: () => string[];
@@ -33,6 +35,8 @@ interface AppStore {
   setError: (error: string | null) => void;
   setP0Warning: (warning: string | null) => void;
   setCookingStep: (step: number) => void;
+  addDoneRecipe: (id: string) => void;
+  setRecentlyUsedIngredientNames: (names: string[]) => void;
   resetSession: () => void;
   getRecipeById: (id: string) => Recipe | undefined;
 }
@@ -49,6 +53,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   error: null,
   p0Warning: null,
   currentCookingStep: 0,
+  doneRecipeIds: [],
+  recentlyUsedIngredientNames: [],
 
   getIngredientNames: () => get().selectedIngredients.map((i) => i.名称),
 
@@ -96,6 +102,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setCookingStep: (step) => set({ currentCookingStep: step }),
 
+  addDoneRecipe: (id) =>
+    set((state) => ({
+      doneRecipeIds: state.doneRecipeIds.includes(id)
+        ? state.doneRecipeIds
+        : [...state.doneRecipeIds, id],
+    })),
+
+  setRecentlyUsedIngredientNames: (names) => set({ recentlyUsedIngredientNames: names }),
+
   resetSession: () =>
     set({
       selectedIngredients: [],
@@ -109,6 +124,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       error: null,
       p0Warning: null,
       currentCookingStep: 0,
+      doneRecipeIds: [],
+      recentlyUsedIngredientNames: [],
     }),
 
   getRecipeById: (id) => get().recipesMap[id],

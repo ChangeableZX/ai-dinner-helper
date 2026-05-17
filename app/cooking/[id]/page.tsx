@@ -13,12 +13,13 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 export default function CookingPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { getRecipeById, selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep } = useAppStore();
+  const { getRecipeById, selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep, addDoneRecipe, setRecentlyUsedIngredientNames } = useAppStore();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [step, setStep] = useState(0);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showDecision, setShowDecision] = useState(false);
   const [stepFlash, setStepFlash] = useState(false);
 
   const touchStartX = useRef(0);
@@ -59,6 +60,15 @@ export default function CookingPage() {
     const prev = step - 1;
     setStep(prev);
     setCookingStep(prev);
+  }
+
+  function handleFeedbackDismiss(usedNames: string[]) {
+    if (usedNames.length > 0) {
+      setRecentlyUsedIngredientNames(usedNames);
+    }
+    if (recipe) addDoneRecipe(recipe.id);
+    setShowFeedback(false);
+    setShowDecision(true);
   }
 
   function handleTouchStart(e: React.TouchEvent) {
@@ -195,7 +205,16 @@ export default function CookingPage() {
           recipe={recipe}
           selectedIngredients={selectedIngredients}
           fatigueLevel={fatigueLevel ?? 2}
-          onDone={() => router.replace('/home')}
+          onDismiss={handleFeedbackDismiss}
+        />
+      )}
+
+      {/* Decision overlay */}
+      {showDecision && recipe && (
+        <DecisionOverlay
+          recipeName={recipe.name}
+          onContinue={() => router.push('/recommend')}
+          onEnd={() => router.replace('/home')}
         />
       )}
     </div>
@@ -298,12 +317,12 @@ const FEEDBACK_BAD_REASONS = [
 ];
 
 function FeedbackModal({
-  recipe, selectedIngredients, fatigueLevel, onDone,
+  recipe, selectedIngredients, fatigueLevel, onDismiss,
 }: {
   recipe: Recipe;
   selectedIngredients: SelectedIngredient[];
   fatigueLevel: number;
-  onDone: () => void;
+  onDismiss: (usedIngredientNames: string[]) => void;
 }) {
   const [rating, setRating] = useState<'good' | 'ok' | 'bad' | null>(null);
   const [reasons, setReasons] = useState<string[]>([]);
@@ -338,11 +357,12 @@ function FeedbackModal({
   }
 
   function handleSubmit() {
-    // Mark consumed inventory items as used
+    const usedNames: string[] = [];
     let markedCount = 0;
     for (const ing of inventoryIngredients) {
       if (checkedIds.has(ing.名称) && ing.库存ID) {
         inventoryStore.markUsed(ing.库存ID);
+        usedNames.push(ing.名称);
         markedCount++;
       }
     }
@@ -364,7 +384,7 @@ function FeedbackModal({
 
     const history = storageGet<HistoryRecord[]>(STORAGE_KEYS.HISTORY, []);
     storageSet(STORAGE_KEYS.HISTORY, [record, ...history].slice(0, 100));
-    onDone();
+    onDismiss(usedNames);
   }
 
   return (
