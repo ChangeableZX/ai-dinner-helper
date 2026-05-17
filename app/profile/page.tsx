@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Plus, X, Trash2 } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
-import { Check } from 'lucide-react';
+import { SEASONING_GROUP_DEFS, EQUIPMENT_GROUP_DEFS } from '@/lib/profile-groups';
 import { storageGet, storageSet, storageClear, STORAGE_KEYS } from '@/lib/storage';
 import { useAppStore } from '@/lib/store';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { UserProfile } from '@/types';
-import { ALL_SEASONINGS, ALL_EQUIPMENT } from '@/app/onboarding/page';
+import { ALL_SEASONINGS } from '@/app/onboarding/page';
 
 const DEFAULT_SEASONINGS = ALL_SEASONINGS;
-const EQUIPMENT_OPTIONS = ALL_EQUIPMENT;
 
 const AVOIDANCE_OPTIONS = ['香菜','葱','姜','蒜','海鲜','牛羊肉'];
 
@@ -110,25 +109,38 @@ export default function ProfilePage() {
       </div>
 
       <div className="px-5 space-y-5">
-        {/* Seasonings */}
+        {/* Seasonings — grouped display */}
         <Section title="调料库">
-          <div className="flex flex-wrap gap-2 mb-3">
-            {[...DEFAULT_SEASONINGS, ...extraSeasonings].map((s) => (
-              <button
-                key={s}
-                onClick={() => toggleSeasoning(s)}
-                className={`px-3 py-1.5 rounded-full text-sm border transition-all active:scale-95 ${
-                  profile.seasonings.includes(s)
-                    ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
-                    : 'bg-white text-gray-500 border-gray-200'
-                }`}
-              >
-                {profile.seasonings.includes(s) && <span className="mr-1 text-xs">✓</span>}
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
+          {SEASONING_GROUP_DEFS.map((group) => {
+            const items =
+              group.name === '其他'
+                ? [...group.items, ...extraSeasonings]
+                : group.items;
+            return (
+              <div key={group.name} className="mb-3 last:mb-0">
+                <p className="text-xs font-medium text-gray-400 mb-2">
+                  {group.emoji} {group.name}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {items.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => toggleSeasoning(s)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition-all active:scale-95 ${
+                        profile.seasonings.includes(s)
+                          ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
+                          : 'bg-white text-gray-500 border-gray-200'
+                      }`}
+                    >
+                      {profile.seasonings.includes(s) && <span className="mr-1 text-xs">✓</span>}
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex gap-2 mt-3">
             <input
               value={customSeasoning}
               onChange={(e) => setCustomSeasoning(e.target.value)}
@@ -142,29 +154,31 @@ export default function ProfilePage() {
           </div>
         </Section>
 
-        {/* Equipment */}
+        {/* Equipment — grouped display */}
         <Section title="厨房设备">
-          <div className="grid grid-cols-2 gap-2">
-            {EQUIPMENT_OPTIONS.map((e) => {
-              const selected = profile.equipment.includes(e);
-              return (
-                <button
-                  key={e}
-                  onClick={() => toggleEquipment(e)}
-                  className={`flex items-center gap-2 p-3 rounded-xl border-2 text-sm transition-all active:scale-95 ${
-                    selected ? 'border-[#FF6B47] bg-[#FFF0EB] text-[#FF6B47]' : 'border-gray-200 bg-white text-gray-600'
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                    selected ? 'border-[#FF6B47] bg-[#FF6B47]' : 'border-gray-300'
-                  }`}>
-                    {selected && <Check size={12} className="text-white" />}
-                  </div>
-                  {e}
-                </button>
-              );
-            })}
-          </div>
+          {EQUIPMENT_GROUP_DEFS.map((group, idx) => (
+            <div key={group.name} className={idx > 0 ? 'mt-3' : ''}>
+              <p className="text-xs font-medium text-gray-400 mb-2">
+                {group.emoji} {group.name}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {group.items.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => toggleEquipment(e)}
+                    className={`px-3 py-1.5 rounded-full text-sm border transition-all active:scale-95 ${
+                      profile.equipment.includes(e)
+                        ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
+                        : 'bg-white text-gray-500 border-gray-200'
+                    }`}
+                  >
+                    {profile.equipment.includes(e) && <span className="mr-1 text-xs">✓</span>}
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </Section>
 
         {/* Skill Level */}
@@ -247,15 +261,6 @@ export default function ProfilePage() {
             ))}
           </div>
         </Section>
-
-        {/* Inventory Link */}
-        <button
-          onClick={() => router.push('/inventory')}
-          className="w-full bg-white rounded-2xl p-4 text-left flex items-center justify-between border border-gray-100 active:scale-[0.98] transition-transform"
-        >
-          <span className="text-sm font-medium text-[#2D2D2D]">📦 食材库</span>
-          <ChevronLeft className="rotate-180 text-gray-400" size={16} />
-        </button>
 
         {/* History Link */}
         <button

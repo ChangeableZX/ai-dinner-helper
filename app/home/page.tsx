@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, X, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { Settings, X, ChevronDown, ChevronUp, Plus, Package } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
 import { inventoryStore } from '@/lib/inventory-store';
@@ -237,12 +237,22 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-bold text-[#2D2D2D]">今晚做什么吃？</h1>
         </div>
-        <button
-          onClick={() => router.push('/profile')}
-          className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform"
-        >
-          <Settings size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push('/inventory')}
+            className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform"
+            aria-label="食材库"
+          >
+            <Package size={20} />
+          </button>
+          <button
+            onClick={() => router.push('/profile')}
+            className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform"
+            aria-label="我的画像"
+          >
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 px-5 space-y-5 pb-36">

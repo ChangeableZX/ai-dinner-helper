@@ -2,19 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { InventoryItem, Category } from '@/types';
 import { inventoryStore } from '@/lib/inventory-store';
 import { getFreshness } from '@/lib/freshness';
-import { CATEGORY_ORDER, CATEGORY_META, getItemCategory } from '@/lib/category-groups';
+import { getItemCategory } from '@/lib/category-groups';
 
 import StatsBar from './components/StatsBar';
-import FilterTabs, { type FilterTab } from './components/FilterTabs';
 import ItemCard from './components/ItemCard';
 import EmptyState from './components/EmptyState';
 import AddItemDialog from './components/AddItemDialog';
+
+type FilterTab = '全部' | '新鲜' | '该吃了' | '可能过期';
+
+const FRESHNESS_TABS: Array<{ value: FilterTab; label: string }> = [
+  { value: '全部', label: '全部' },
+  { value: '新鲜', label: '🟢 新鲜' },
+  { value: '该吃了', label: '🟡 该吃了' },
+  { value: '可能过期', label: '🔴 可能过期' },
+];
+
+const CATEGORY_TABS: Array<{ value: Category | null; label: string }> = [
+  { value: null, label: '全部' },
+  { value: '肉蛋海鲜', label: '🥩 肉蛋海鲜' },
+  { value: '蔬菜', label: '🥬 蔬菜' },
+  { value: '主食', label: '🌾 主食' },
+  { value: '调料', label: '🧂 调料' },
+  { value: '其他', label: '📦 其他' },
+];
 
 interface DialogState {
   open: boolean;
@@ -27,7 +44,6 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState<FilterTab>('全部');
   const [categoryFilter, setCategoryFilter] = useState<Category | null>(null);
-  const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({ open: false, mode: 'add' });
   const [newlyAddedIds, setNewlyAddedIds] = useState<Set<string>>(new Set());
 
@@ -163,32 +179,38 @@ export default function InventoryPage() {
           <>
             <StatsBar filteredActive={filteredActive} totalExpired={totalExpired} />
 
-            {/* Freshness tabs + category filter button */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className="flex-1 min-w-0">
-                <FilterTabs active={filter} onChange={setFilter} />
+            {/* Two-row filter: row 1 = freshness, row 2 = category */}
+            <div className="space-y-2 mb-4">
+              <div className="flex flex-wrap gap-1.5">
+                {FRESHNESS_TABS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilter(value)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                      filter === value
+                        ? 'bg-[#FF6B47] text-white shadow-sm'
+                        : 'bg-white text-gray-500 border border-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              <button
-                onClick={() => categoryFilter ? setCategoryFilter(null) : setCategoryPanelOpen(true)}
-                className={`flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
-                  categoryFilter
-                    ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
-                    : 'bg-white text-gray-500 border-gray-200'
-                }`}
-              >
-                {categoryFilter ? (
-                  <>
-                    <span>{CATEGORY_META[categoryFilter].emoji}</span>
-                    <span>{categoryFilter}</span>
-                    <X size={13} />
-                  </>
-                ) : (
-                  <>
-                    <SlidersHorizontal size={14} />
-                    <span>分类</span>
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORY_TABS.map(({ value, label }) => (
+                  <button
+                    key={value ?? '_all'}
+                    onClick={() => setCategoryFilter(value)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                      categoryFilter === value
+                        ? 'bg-[#FF6B47] text-white shadow-sm'
+                        : 'bg-white text-gray-500 border border-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Active items */}
@@ -249,54 +271,6 @@ export default function InventoryPage() {
             >
               ➕ 添加食材
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Category filter bottom sheet */}
-      {categoryPanelOpen && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => setCategoryPanelOpen(false)}
-        >
-          <div className="absolute inset-0 bg-black/30" />
-          <div
-            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-2xl px-5 pt-5 pb-10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm font-semibold text-[#2D2D2D] mb-4">按分类筛选</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => { setCategoryFilter(null); setCategoryPanelOpen(false); }}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
-                  categoryFilter === null
-                    ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
-                    : 'bg-white text-gray-500 border-gray-200'
-                }`}
-              >
-                全部（{activeItems.length}）
-              </button>
-              {CATEGORY_ORDER.map((cat) => {
-                const count = activeItems.filter((i) => getItemCategory(i) === cat).length;
-                if (count === 0) return null;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setCategoryFilter(categoryFilter === cat ? null : cat);
-                      setCategoryPanelOpen(false);
-                    }}
-                    className={`px-4 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
-                      categoryFilter === cat
-                        ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
-                        : 'bg-white text-gray-500 border-gray-200'
-                    }`}
-                  >
-                    {CATEGORY_META[cat].emoji} {cat}（{count}）
-                  </button>
-                );
-              })}
-            </div>
           </div>
         </div>
       )}
