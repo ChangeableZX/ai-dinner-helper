@@ -5,13 +5,15 @@ import { useRouter, useParams } from 'next/navigation';
 import { X, Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
-import type { Recipe, HistoryRecord, CookingStep } from '@/types';
+import { inventoryStore } from '@/lib/inventory-store';
+import { toast } from 'sonner';
+import type { Recipe, HistoryRecord, CookingStep, SelectedIngredient } from '@/types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 export default function CookingPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { getRecipeById, ingredients, fatigueLevel, setCookingStep, currentCookingStep } = useAppStore();
+  const { getRecipeById, selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep } = useAppStore();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [step, setStep] = useState(0);
@@ -19,7 +21,6 @@ export default function CookingPage() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [stepFlash, setStepFlash] = useState(false);
 
-  // Touch gesture state
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
 
@@ -192,7 +193,7 @@ export default function CookingPage() {
       {showFeedback && recipe && (
         <FeedbackModal
           recipe={recipe}
-          ingredients={ingredients}
+          selectedIngredients={selectedIngredients}
           fatigueLevel={fatigueLevel ?? 2}
           onDone={() => router.replace('/home')}
         />
@@ -214,7 +215,6 @@ function StepTimer({ seconds }: { seconds: number }) {
         clearInterval(intervalRef.current!);
         setRunning(false);
         setFinished(true);
-        // [边界处理] 计时器结束：振动 + 提示
         navigator.vibrate?.([200, 100, 200]);
         return 0;
       }
@@ -243,7 +243,6 @@ function StepTimer({ seconds }: { seconds: number }) {
     };
   }, []);
 
-  // Reset when seconds prop changes (step changed)
   useEffect(() => {
     clearInterval(intervalRef.current!);
     setRunning(false);
@@ -299,10 +298,10 @@ const FEEDBACK_BAD_REASONS = [
 ];
 
 function FeedbackModal({
-  recipe, ingredients, fatigueLevel, onDone,
+  recipe, selectedIngredients, fatigueLevel, onDone,
 }: {
   recipe: Recipe;
-  ingredients: string[];
+  selectedIngredients: SelectedIngredient[];
   fatigueLevel: number;
   onDone: () => void;
 }) {
@@ -310,11 +309,48 @@ function FeedbackModal({
   const [reasons, setReasons] = useState<string[]>([]);
   const [note, setNote] = useState('');
 
+  // Inventory ingredients used in this session
+  const inventoryIngredients = selectedIngredients.filter((i) => i.来源 === '库存');
+  // Default all checked (assume eaten)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(
+    new Set(inventoryIngredients.map((i) => i.名称)),
+  );
+
+  function toggleCheck(名称: string) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(名称)) next.delete(名称);
+      else next.add(名称);
+      return next;
+    });
+  }
+
+  function checkAll() {
+    setCheckedIds(new Set(inventoryIngredients.map((i) => i.名称)));
+  }
+
+  function uncheckAll() {
+    setCheckedIds(new Set());
+  }
+
   function toggleReason(r: string) {
     setReasons((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]);
   }
 
   function handleSubmit() {
+    // Mark consumed inventory items as used
+    let markedCount = 0;
+    for (const ing of inventoryIngredients) {
+      if (checkedIds.has(ing.名称) && ing.库存ID) {
+        inventoryStore.markUsed(ing.库存ID);
+        markedCount++;
+      }
+    }
+
+    if (markedCount > 0) {
+      toast.success(`已更新食材库，${markedCount} 项标记为吃完了`);
+    }
+
     const record: HistoryRecord = {
       id: `hist_${Date.now()}`,
       date: new Date().toISOString(),
@@ -322,7 +358,7 @@ function FeedbackModal({
       recipe,
       rating,
       feedback: (rating === 'ok' || rating === 'bad') ? { reasons, note } : undefined,
-      ingredients,
+      ingredients: selectedIngredients.map((i) => i.名称),
       fatigueLevel: fatigueLevel as HistoryRecord['fatigueLevel'],
     };
 
@@ -333,11 +369,11 @@ function FeedbackModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end z-50">
-      <div className="w-full max-w-[480px] mx-auto bg-[#FAF7F2] rounded-t-3xl p-6 pb-10">
+      <div className="w-full max-w-[480px] mx-auto bg-[#FAF7F2] rounded-t-3xl p-6 pb-10 overflow-y-auto max-h-[90vh]">
         <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
 
         <h2 className="text-xl font-bold text-[#2D2D2D] text-center mb-2">今天这道菜怎么样？</h2>
-        <p className="text-gray-400 text-sm text-center mb-6">{recipe.name}</p>
+        <p className="text-gray-400 text-sm text-center mb-6">🍽️ {recipe.name}</p>
 
         {/* Rating */}
         <div className="flex justify-center gap-6 mb-6">
@@ -389,6 +425,49 @@ function FeedbackModal({
               rows={2}
               className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none outline-none focus:border-[#FF6B47]"
             />
+          </div>
+        )}
+
+        {/* Ingredient consumption confirmation */}
+        {inventoryIngredients.length > 0 && (
+          <div className="mb-6 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-[#2D2D2D]">🥕 这些食材吃完了吗？</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={checkAll}
+                  className="text-xs text-[#FF6B47] active:scale-95 transition-transform"
+                >
+                  全选吃完了
+                </button>
+                <span className="text-gray-200">|</span>
+                <button
+                  onClick={uncheckAll}
+                  className="text-xs text-gray-400 active:scale-95 transition-transform"
+                >
+                  都还有
+                </button>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
+              {inventoryIngredients.map((ing) => (
+                <label
+                  key={ing.名称}
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer active:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checkedIds.has(ing.名称)}
+                    onChange={() => toggleCheck(ing.名称)}
+                    className="accent-[#FF6B47] w-4 h-4"
+                  />
+                  <span className="text-sm text-[#2D2D2D]">
+                    {ing.名称}
+                    <span className="text-xs text-gray-400 ml-1">（库存）</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

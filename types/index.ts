@@ -10,6 +10,23 @@ export interface UserProfile {
 
 export type FatigueLevel = 1 | 2 | 3;
 
+export type FoodPreference = 'clear_stock' | 'default' | 'fresh_first';
+
+export type FreshnessLevel = '新鲜' | '该吃了' | '可能过期';
+
+export interface SelectedIngredient {
+  名称: string;
+  来源: '实时输入' | '库存' | '临时输入';
+  库存ID?: string;
+  新鲜度?: FreshnessLevel;
+}
+
+export interface IngredientUsageStats {
+  已用库存食材: string[];
+  已用今日输入: string[];
+  未用上的库存: string[];
+}
+
 export interface Ingredient {
   name: string;
   amount: string;
@@ -44,8 +61,7 @@ export interface Recipe {
   usedCoreIngredients: string[];
   /** 用户今日食材中被本菜使用的比例 0-1 */
   ingredientUsageRate: number;
-  // P1 extension: severity per avoidance item
-  // avoidanceSeverity?: Record<string, 'mild' | 'strict'>
+  食材使用统计?: IngredientUsageStats;
 }
 
 export interface FeedbackData {
@@ -65,8 +81,9 @@ export interface HistoryRecord {
 }
 
 export interface RecommendRequest {
-  ingredients: string[];
+  ingredients: SelectedIngredient[];
   fatigueLevel: FatigueLevel;
+  food_preference: FoodPreference;
   userProfile: {
     调料库: string[];
     设备: string[];

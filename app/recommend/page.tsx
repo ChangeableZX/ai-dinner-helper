@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Clock, BarChart2, Wind, ChevronLeft, RefreshCw, ChevronDown } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { storageGet, STORAGE_KEYS } from '@/lib/storage';
-import type { Recipe, UserProfile, RecommendResponse } from '@/types';
+import type { Recipe, UserProfile, RecommendResponse, SelectedIngredient, IngredientUsageStats } from '@/types';
 
 const LOADING_MESSAGES = [
   '翻翻你的厨房…',
@@ -15,29 +15,59 @@ const LOADING_MESSAGES = [
   '帮你把关一下…',
 ];
 
-// [边界处理] 多次重试后的友好提示阈值
 const MAX_RETRY_FRIENDLY_MSG = 5;
+
+function loosematch(a: string, b: string): boolean {
+  const na = a.toLowerCase().replace(/\s+/g, '');
+  const nb = b.toLowerCase().replace(/\s+/g, '');
+  return na.includes(nb) || nb.includes(na);
+}
+
+function computeUsageStats(
+  recipe: Recipe,
+  selectedIngredients: SelectedIngredient[],
+): IngredientUsageStats {
+  const recipeIngNames = recipe.ingredients
+    .filter((i) => i.source === '今日食材')
+    .map((i) => i.name);
+
+  const inventoryItems = selectedIngredients.filter((i) => i.来源 === '库存');
+  const inputItems = selectedIngredients.filter((i) => i.来源 !== '库存');
+
+  const 已用库存食材 = inventoryItems
+    .filter((i) => recipeIngNames.some((n) => loosematch(n, i.名称)))
+    .map((i) => i.名称);
+
+  const 已用今日输入 = inputItems
+    .filter((i) => recipeIngNames.some((n) => loosematch(n, i.名称)))
+    .map((i) => i.名称);
+
+  const 未用上的库存 = inventoryItems
+    .filter((i) => !已用库存食材.includes(i.名称))
+    .map((i) => i.名称);
+
+  return { 已用库存食材, 已用今日输入, 未用上的库存 };
+}
 
 export default function RecommendPage() {
   const router = useRouter();
   const {
-    ingredients, fatigueLevel, recipesMap, excludedDishes, retryCount,
+    selectedIngredients, fatigueLevel, foodPreference, recipesMap, excludedDishes, retryCount,
     isLoading, error, p0Warning, setRecipes, setLoading, setError, setP0Warning,
     addExcludedDish, incrementRetry, setSelectedRecipeId,
   } = useAppStore();
 
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
-  const [coverageOpen, setCoverageOpen] = useState(true);
   const fetchInitiated = useRef(false);
 
-  // Guard: if no ingredients or fatigue, redirect home
+  const ingredientNames = selectedIngredients.map((i) => i.名称);
+
   useEffect(() => {
-    if (!ingredients.length || !fatigueLevel) {
+    if (!selectedIngredients.length || !fatigueLevel) {
       router.replace('/home');
     }
-  }, [ingredients, fatigueLevel, router]);
+  }, [selectedIngredients, fatigueLevel, router]);
 
-  // Rotate loading messages
   useEffect(() => {
     if (!isLoading) return;
     const idx = { current: 0 };
@@ -48,11 +78,10 @@ export default function RecommendPage() {
     return () => clearInterval(timer);
   }, [isLoading]);
 
-  // Fetch on mount — skip if recipes already cached (back-nav hit) or already initiated
   useEffect(() => {
-    if (!ingredients.length || !fatigueLevel) return;
+    if (!selectedIngredients.length || !fatigueLevel) return;
     if (Object.keys(recipesMap).length > 0) return;
-    if (fetchInitiated.current) return; // ref persists across StrictMode re-invocation
+    if (fetchInitiated.current) return;
     fetchInitiated.current = true;
     fetchRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,8 +107,9 @@ export default function RecommendPage() {
       ];
 
       const body = {
-        ingredients,
+        ingredients: selectedIngredients,
         fatigueLevel,
+        food_preference: foodPreference,
         userProfile: {
           调料库: profile?.seasonings ?? [],
           设备: profile?.equipment ?? [],
@@ -106,14 +136,12 @@ export default function RecommendPage() {
       const data: RecommendResponse = await res.json();
 
       if (!data.success || !data.recipes?.length) {
-        // [边界处理] 全军覆没 / 食材不足
         setError(data.error ?? '这些食材暂时想不到好方案');
       } else {
         setRecipes(data.recipes);
         if (data.p0Warning) setP0Warning(data.p0Warning);
       }
     } catch {
-      // [边界处理] 网络失败
       setError('刚才走神了，再试一次');
     } finally {
       setLoading(false);
@@ -121,7 +149,6 @@ export default function RecommendPage() {
   }
 
   function handleRetry() {
-    // [边界处理] 都不想做时重推（加入 excluded list）
     const currentNames = Object.values(recipesMap).map((r) => r.name);
     currentNames.forEach((n) => addExcludedDish(n));
     incrementRetry();
@@ -134,15 +161,6 @@ export default function RecommendPage() {
   }
 
   const recipes = Object.values(recipesMap);
-
-  // Compute ingredient coverage across all recipes
-  const allRecipeIngredientNames = recipes.flatMap((r) =>
-    r.ingredients.filter((i) => i.source === '今日食材').map((i) => i.name)
-  );
-  const usedIngredients = ingredients.filter((ui) =>
-    allRecipeIngredientNames.some((n) => n.includes(ui) || ui.includes(n))
-  );
-  const unusedIngredients = ingredients.filter((ui) => !usedIngredients.includes(ui));
 
   return (
     <div className="flex flex-col min-h-screen page-enter">
@@ -157,7 +175,7 @@ export default function RecommendPage() {
         <div>
           <h1 className="text-lg font-bold text-[#2D2D2D]">今晚推荐</h1>
           <p className="text-xs text-gray-400">
-            {ingredients.slice(0, 3).join('、')}{ingredients.length > 3 ? ` 等${ingredients.length}种食材` : ''}
+            {ingredientNames.slice(0, 3).join('、')}{ingredientNames.length > 3 ? ` 等${ingredientNames.length}种食材` : ''}
           </p>
         </div>
       </div>
@@ -176,8 +194,6 @@ export default function RecommendPage() {
               ))}
             </div>
             <p className="text-[#2D2D2D] text-lg font-medium">{loadingMsg}</p>
-
-            {/* Skeleton cards */}
             <div className="w-full mt-8 space-y-4">
               {[1, 2].map((i) => (
                 <div key={i} className="bg-white rounded-2xl p-5 space-y-3">
@@ -213,48 +229,7 @@ export default function RecommendPage() {
           <div className="space-y-4 pb-32">
             {retryCount >= MAX_RETRY_FRIENDLY_MSG && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-700">
-                {/* [边界处理] 多次重试提示 */}
                 这些食材组合可能真的比较难发挥，建议补充点蛋白质或蔬菜再试试 😊
-              </div>
-            )}
-
-            {/* Ingredient Coverage Panel */}
-            {ingredients.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <button
-                  onClick={() => setCoverageOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3"
-                >
-                  <span className="text-sm font-semibold text-[#2D2D2D]">食材使用情况</span>
-                  <ChevronDown
-                    size={16}
-                    className={`text-gray-400 transition-transform ${coverageOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-                {coverageOpen && (
-                  <div className="px-4 pb-4 space-y-2">
-                    {usedIngredients.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {usedIngredients.map((ing) => (
-                          <span key={ing} className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                            {ing}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {unusedIngredients.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {unusedIngredients.map((ing) => (
-                          <span key={ing} className="flex items-center gap-1 text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-                            {ing}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
@@ -262,11 +237,11 @@ export default function RecommendPage() {
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
+                selectedIngredients={selectedIngredients}
                 onSelect={() => handleSelect(recipe)}
               />
             ))}
 
-            {/* P0 Warning Banner */}
             {p0Warning && (
               <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-sm text-orange-700">
                 {p0Warning}
@@ -287,40 +262,91 @@ export default function RecommendPage() {
   );
 }
 
-function RecipeCard({ recipe, onSelect }: { recipe: Recipe; onSelect: () => void }) {
+function RecipeCard({
+  recipe, selectedIngredients, onSelect,
+}: {
+  recipe: Recipe;
+  selectedIngredients: SelectedIngredient[];
+  onSelect: () => void;
+}) {
+  const [statsOpen, setStatsOpen] = useState(false);
+
+  const stats = computeUsageStats(recipe, selectedIngredients);
+  const hasInventoryIngredients = selectedIngredients.some((i) => i.来源 === '库存');
+
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-      <h2 className="text-xl font-bold text-[#2D2D2D] mb-1">{recipe.name}</h2>
-      <p className="text-gray-400 text-sm mb-4">{recipe.reason}</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="p-5">
+        <h2 className="text-xl font-bold text-[#2D2D2D] mb-1">{recipe.name}</h2>
+        <p className="text-gray-400 text-sm mb-4">{recipe.reason}</p>
 
-      <div className="flex gap-2 flex-wrap mb-5">
-        <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
-          <Clock size={12} />
-          {recipe.durationMinutes} 分钟
-        </span>
-        <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
-          <BarChart2 size={12} />
-          {recipe.difficulty}
-        </span>
-        {recipe.hasSmoke && (
-          <span className="flex items-center gap-1 bg-gray-50 text-gray-500 text-xs px-3 py-1.5 rounded-full border border-gray-100">
-            <Wind size={12} />
-            有油烟
+        <div className="flex gap-2 flex-wrap mb-4">
+          <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
+            <Clock size={12} />
+            {recipe.durationMinutes} 分钟
           </span>
-        )}
-        {recipe.ingredientUsageRate >= 0.6 && (
-          <span className="flex items-center gap-1 bg-green-50 text-green-600 text-xs px-3 py-1.5 rounded-full border border-green-100">
-            {Math.round(recipe.ingredientUsageRate * 100)}% 食材利用
+          <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
+            <BarChart2 size={12} />
+            {recipe.difficulty}
           </span>
+          {recipe.hasSmoke && (
+            <span className="flex items-center gap-1 bg-gray-50 text-gray-500 text-xs px-3 py-1.5 rounded-full border border-gray-100">
+              <Wind size={12} />
+              有油烟
+            </span>
+          )}
+          {recipe.ingredientUsageRate >= 0.6 && (
+            <span className="flex items-center gap-1 bg-green-50 text-green-600 text-xs px-3 py-1.5 rounded-full border border-green-100">
+              {Math.round(recipe.ingredientUsageRate * 100)}% 食材利用
+            </span>
+          )}
+        </div>
+
+        {/* Ingredient usage stats toggle */}
+        {hasInventoryIngredients && (
+          <button
+            onClick={() => setStatsOpen((v) => !v)}
+            className="w-full flex items-center justify-between text-sm text-gray-500 py-2 border-t border-gray-100 mb-4 active:opacity-70"
+          >
+            <span>查看食材使用情况</span>
+            <ChevronDown
+              size={16}
+              className={`transition-transform duration-200 ${statsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
         )}
+
+        {/* Usage stats panel */}
+        {statsOpen && (
+          <div className="space-y-1.5 mb-4 text-sm bg-gray-50 rounded-xl p-3">
+            {stats.已用库存食材.length > 0 && (
+              <p className="text-green-700">
+                ✓ 用了你库存的：{stats.已用库存食材.join('、')}
+              </p>
+            )}
+            {stats.已用今日输入.length > 0 && (
+              <p className="text-green-600">
+                ✓ 用了今天加的：{stats.已用今日输入.join('、')}
+              </p>
+            )}
+            {stats.未用上的库存.length > 0 && (
+              <p className="text-gray-400">
+                ○ 没用上的库存：{stats.未用上的库存.join('、')}
+              </p>
+            )}
+            {stats.已用库存食材.length === 0 && stats.已用今日输入.length === 0 && (
+              <p className="text-gray-400">（暂无食材使用信息）</p>
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={onSelect}
+          className="w-full bg-[#FF6B47] text-white py-3 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform"
+        >
+          选这个 →
+        </button>
       </div>
-
-      <button
-        onClick={onSelect}
-        className="w-full bg-[#FF6B47] text-white py-3 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform"
-      >
-        选这个 →
-      </button>
     </div>
   );
 }

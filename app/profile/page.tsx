@@ -248,6 +248,15 @@ export default function ProfilePage() {
           </div>
         </Section>
 
+        {/* Inventory Link */}
+        <button
+          onClick={() => router.push('/inventory')}
+          className="w-full bg-white rounded-2xl p-4 text-left flex items-center justify-between border border-gray-100 active:scale-[0.98] transition-transform"
+        >
+          <span className="text-sm font-medium text-[#2D2D2D]">📦 食材库</span>
+          <ChevronLeft className="rotate-180 text-gray-400" size={16} />
+        </button>
+
         {/* History Link */}
         <button
           onClick={() => router.push('/history')}

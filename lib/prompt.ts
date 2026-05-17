@@ -27,6 +27,27 @@ fatigue=1 时允许最简单处理（直接煎/炒/煮）。
 尽量覆盖更多今日食材。如果有 ≥4 种食材，至少有一道菜用了 60% 以上的食材。
 每道菜输出字段 "食材使用率": 0.85（用到的今日食材数 / 今日食材总数，0-1 的小数）。
 
+【铁律8·食材偏好遵从】
+
+根据 food_preference 字段调整推荐策略：
+
+- "clear_stock"（清库存）：
+  优先使用新鲜度为"该吃了"或"可能过期"的食材
+  如果有可能过期的食材，必须在推荐方案中使用至少 1 种
+
+- "default"（默认随便）：
+  同等条件下，倾向使用"该吃了"的食材（降低浪费）
+  但不强求，以菜品的合理性为先
+
+- "fresh_first"（用新鲜的）：
+  优先使用新鲜度为"新鲜"的食材
+  尽量避免使用"可能过期"的食材
+
+【铁律9·食材来源感知】
+
+用户食材可能标注了来源（库存/今日输入）和新鲜度（新鲜/该吃了/可能过期）。
+在制定推荐方案时，充分考虑这些信息来优化食材搭配，减少食物浪费。
+
 请输出 2-3 个方案，JSON 格式严格如下：
 {
   "方案": [
@@ -68,7 +89,26 @@ export function buildUserPrompt(req: RecommendRequest): string {
     3: '今天还有劲，30分钟内，可稍复杂',
   };
 
-  return `今日食材：${req.ingredients.join('、')}
+  const preferenceLabelMap: Record<string, string> = {
+    clear_stock: '清库存（优先用快过期的食材）',
+    default: '随便都行（AI综合判断）',
+    fresh_first: '用新鲜的（优先用最近买的）',
+  };
+
+  // Format ingredient list with source and freshness info
+  const ingList = req.ingredients.map((i) => {
+    let desc = i.名称;
+    if (i.来源 === '库存' && i.新鲜度) {
+      desc += `（库存，${i.新鲜度}）`;
+    } else if (i.来源 === '库存') {
+      desc += '（库存）';
+    }
+    return desc;
+  });
+
+  return `今日食材：${ingList.join('、')}
+
+食材偏好：${preferenceLabelMap[req.food_preference] ?? '随便都行'}
 
 用户画像：
 - 调料库：${req.userProfile.调料库.join('、') || '（无）'}

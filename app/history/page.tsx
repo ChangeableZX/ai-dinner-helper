@@ -26,7 +26,7 @@ function formatDate(iso: string): string {
 
 export default function HistoryPage() {
   const router = useRouter();
-  const { setRecipes, setSelectedRecipeId, setIngredients, setFatigueLevel } = useAppStore();
+  const { setRecipes, setSelectedRecipeId, setSelectedIngredients, setFatigueLevel } = useAppStore();
   const [records, setRecords] = useState<HistoryRecord[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function HistoryPage() {
   function handleCookAgain(record: HistoryRecord) {
     setRecipes([record.recipe]);
     setSelectedRecipeId(record.recipe.id);
-    setIngredients(record.ingredients);
+    setSelectedIngredients(record.ingredients.map((名称) => ({ 名称, 来源: '实时输入' as const })));
     setFatigueLevel(record.fatigueLevel);
     router.push(`/recipe/${record.recipe.id}`);
   }

@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, X } from 'lucide-react';
+import { Settings, X, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
-import type { FatigueLevel } from '@/types';
+import { inventoryStore } from '@/lib/inventory-store';
+import { getFreshness, getFreshnessEmoji } from '@/lib/freshness';
+import type { FatigueLevel, FoodPreference, SelectedIngredient, InventoryItem } from '@/types';
 
 const FATIGUE_OPTIONS: Array<{
   level: FatigueLevel;
@@ -18,6 +20,18 @@ const FATIGUE_OPTIONS: Array<{
   { level: 3, emoji: '💪', label: '今天还有劲', desc: '30+分钟，可稍复杂' },
 ];
 
+const FOOD_PREFERENCE_OPTIONS: Array<{
+  id: FoodPreference;
+  label: string;
+  emoji: string;
+  description: string;
+  isDefault?: boolean;
+}> = [
+  { id: 'clear_stock', label: '清库存', emoji: '🟡', description: '优先用快过期的' },
+  { id: 'default', label: '随便都行', emoji: '😊', description: 'AI 综合判断', isDefault: true },
+  { id: 'fresh_first', label: '用新鲜的', emoji: '✨', description: '优先用最近买的' },
+];
+
 function parseIngredients(raw: string): string[] {
   return raw
     .split(/[\s,，、\n]+/)
@@ -25,38 +39,70 @@ function parseIngredients(raw: string): string[] {
     .filter((s) => s.length > 0 && s.length <= 20);
 }
 
+// Sort inventory items: 可能过期 > 该吃了 > 新鲜, then by 入库时间 asc within group
+function sortByFreshness(items: InventoryItem[]): InventoryItem[] {
+  const order: Record<string, number> = { 可能过期: 0, 该吃了: 1, 新鲜: 2 };
+  return [...items].sort((a, b) => {
+    const fa = getFreshness(a);
+    const fb = getFreshness(b);
+    if (order[fa] !== order[fb]) return order[fa] - order[fb];
+    return new Date(a.入库时间).getTime() - new Date(b.入库时间).getTime();
+  });
+}
+
+function daysSince(isoDate: string): number {
+  return Math.floor((Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export default function HomePage() {
   const router = useRouter();
   const {
-    ingredients, fatigueLevel, setIngredients, addIngredient, removeIngredient,
-    setFatigueLevel, setError, setRecipes, resetRetry,
+    selectedIngredients, fatigueLevel, foodPreference,
+    addSelectedIngredient, removeSelectedIngredient,
+    setFatigueLevel, setFoodPreference,
+    setError, setRecipes, resetRetry,
   } = useAppStore();
 
   const [inputValue, setInputValue] = useState('');
-  const [recentIngredients, setRecentIngredients] = useState<string[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryExpanded, setInventoryExpanded] = useState(false);
+  const [showExtraInput, setShowExtraInput] = useState(false);
+  const [extraName, setExtraName] = useState('');
+  const [extraSaveToLib, setExtraSaveToLib] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // [边界处理] 超长食材文本提示
   const isInputTooLong = inputValue.length > 200;
+  const ingredientNames = selectedIngredients.map((i) => i.名称);
 
   useEffect(() => {
-    const recent = storageGet<string[]>(STORAGE_KEYS.RECENT_INGREDIENTS, []);
-    setRecentIngredients(recent.slice(0, 6));
+    const active = inventoryStore.getActive();
+    setInventoryItems(sortByFreshness(active));
+
+    // Check if we should show the empty-inventory guide
+    if (active.length === 0) {
+      const dismissed = storageGet<number>(STORAGE_KEYS.INVENTORY_GUIDE_DISMISSED, 0);
+      if (Date.now() - dismissed > 24 * 60 * 60 * 1000) {
+        setShowGuide(true);
+      }
+    }
   }, []);
+
+  const expiringItems = inventoryItems.filter((i) => getFreshness(i) === '可能过期');
+  const displayedInventory = inventoryExpanded ? inventoryItems : inventoryItems.slice(0, 5);
 
   function handleInputChange(val: string) {
     setInputValue(val);
-    // Parse chips on the fly when separator chars are typed
     if (/[,，、\n]/.test(val)) {
       const parts = parseIngredients(val);
-      parts.forEach((p) => addIngredient(p));
+      parts.forEach((p) => addSelectedIngredient({ 名称: p, 来源: '实时输入' }));
       setInputValue('');
     }
   }
 
   function handleInputBlur() {
     const parts = parseIngredients(inputValue);
-    parts.forEach((p) => addIngredient(p));
+    parts.forEach((p) => addSelectedIngredient({ 名称: p, 来源: '实时输入' }));
     setInputValue('');
   }
 
@@ -67,88 +113,127 @@ export default function HomePage() {
     }
   }
 
+  function toggleInventoryItem(item: InventoryItem) {
+    const freshness = getFreshness(item);
+    if (ingredientNames.includes(item.名称)) {
+      removeSelectedIngredient(item.名称);
+    } else {
+      addSelectedIngredient({
+        名称: item.名称,
+        来源: '库存',
+        库存ID: item.id,
+        新鲜度: freshness,
+      });
+    }
+  }
+
+  function addAllInventory() {
+    inventoryItems.forEach((item) => {
+      if (!ingredientNames.includes(item.名称)) {
+        addSelectedIngredient({
+          名称: item.名称,
+          来源: '库存',
+          库存ID: item.id,
+          新鲜度: getFreshness(item),
+        });
+      }
+    });
+  }
+
+  function addExpiringAndSetPreference() {
+    expiringItems.forEach((item) => {
+      if (!ingredientNames.includes(item.名称)) {
+        addSelectedIngredient({
+          名称: item.名称,
+          来源: '库存',
+          库存ID: item.id,
+          新鲜度: '可能过期',
+        });
+      }
+    });
+    setFoodPreference('clear_stock');
+  }
+
+  function handleAddExtra() {
+    const name = extraName.trim();
+    if (!name) return;
+    addSelectedIngredient({ 名称: name, 来源: '临时输入' });
+    if (extraSaveToLib) {
+      inventoryStore.add({
+        名称: name,
+        入库时间: new Date().toISOString(),
+        来源: '实时输入入库',
+        类别: '其他',
+      });
+    }
+    setExtraName('');
+    setShowExtraInput(false);
+  }
+
+  function dismissGuide() {
+    storageSet(STORAGE_KEYS.INVENTORY_GUIDE_DISMISSED, Date.now());
+    setShowGuide(false);
+  }
+
   async function handleSubmit() {
-    if (ingredients.length === 0 || !fatigueLevel) return;
+    if (selectedIngredients.length === 0 || !fatigueLevel) return;
 
-    // Save recent ingredients
-    const all = [...new Set([...ingredients, ...recentIngredients])].slice(0, 20);
+    // Save recent ingredients (plain names)
+    const recent = storageGet<string[]>(STORAGE_KEYS.RECENT_INGREDIENTS, []);
+    const all = [...new Set([...ingredientNames, ...recent])].slice(0, 20);
     storageSet(STORAGE_KEYS.RECENT_INGREDIENTS, all);
-
-    // Get history for recent dishes
-    const history = storageGet<Array<{ recipeName: string; date: string }>>(
-      STORAGE_KEYS.HISTORY, [],
-    );
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const recentDishes = history
-      .filter((h) => new Date(h.date).getTime() > sevenDaysAgo)
-      .map((h) => h.recipeName);
-
-    const profile = storageGet<import('@/types').UserProfile | null>(
-      STORAGE_KEYS.USER_PROFILE, null,
-    )!;
 
     setError(null);
     resetRetry();
     setRecipes([]);
     router.push('/recommend');
-
-    // Fetch happens in the recommend page, pass data via store
-    // (store already has ingredients and fatigueLevel set)
-    // We just navigate; recommend page will trigger the fetch
   }
 
-  const canSubmit = ingredients.length > 0 && fatigueLevel !== null;
+  const canSubmit = selectedIngredients.length > 0 && fatigueLevel !== null;
 
   return (
     <div className="flex flex-col min-h-screen page-enter">
+      {/* Expiring banner */}
+      {expiringItems.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-amber-700 flex-1">
+            ⚠️ 你冰箱里有 {expiringItems.length} 样食材可能过期了，要不今晚清一清？
+          </p>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={addExpiringAndSetPreference}
+              className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+            >
+              一键加入
+            </button>
+            <button
+              onClick={() => router.push('/inventory')}
+              className="text-xs text-amber-600 border border-amber-300 px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+            >
+              去看看
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-12 pb-4">
+      <div className="flex items-center justify-between px-5 pt-10 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#2D2D2D]">饭饭 🍚</h1>
-          <p className="text-gray-400 text-sm mt-0.5">今晚做什么？</p>
+          <h1 className="text-2xl font-bold text-[#2D2D2D]">今晚做什么吃？</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push('/inventory')}
-            className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform text-lg"
-            aria-label="食材库"
-          >
-            📦
-          </button>
-          <button
-            onClick={() => router.push('/profile')}
-            className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform"
-          >
-            <Settings size={20} />
-          </button>
-        </div>
+        <button
+          onClick={() => router.push('/profile')}
+          className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 active:scale-95 transition-transform"
+        >
+          <Settings size={20} />
+        </button>
       </div>
 
-      <div className="flex-1 px-5 space-y-6 pb-36">
-        {/* Ingredients Section */}
-        <section>
-          <p className="text-sm font-semibold text-[#2D2D2D] mb-2">今天有什么食材？</p>
+      <div className="flex-1 px-5 space-y-5 pb-36">
 
-          {/* Chips */}
-          {ingredients.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {ingredients.map((ing) => (
-                <span
-                  key={ing}
-                  className="flex items-center gap-1 bg-[#FFF0EB] text-[#FF6B47] text-sm px-3 py-1.5 rounded-full border border-[#FFD4C4] font-medium"
-                >
-                  {ing}
-                  <button
-                    onClick={() => removeIngredient(ing)}
-                    className="ml-0.5 hover:text-red-500 transition-colors"
-                    aria-label={`删除 ${ing}`}
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+        {/* ── 食材选择区 ─────────────────────────── */}
+        <section>
+          <p className="text-sm font-semibold text-[#2D2D2D] mb-2">📝 今天想用什么菜？</p>
 
           {/* Input */}
           <div className="relative">
@@ -160,47 +245,205 @@ export default function HomePage() {
               onKeyDown={handleInputKeyDown}
               rows={2}
               placeholder={
-                ingredients.length === 0
-                  ? '比如：鸡蛋 番茄 一把青菜（空格/逗号/换行分隔）'
+                selectedIngredients.length === 0
+                  ? '输入或从下方选择…（空格/逗号/换行分隔）'
                   : '继续添加…'
               }
               className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none outline-none focus:border-[#FF6B47] transition-colors placeholder:text-gray-300"
             />
             {isInputTooLong && (
-              <p className="text-xs text-amber-500 mt-1">
-                {/* [边界处理] 超长食材文本 */}
-                今天买的有点多，可以分两顿哦 😄
-              </p>
+              <p className="text-xs text-amber-500 mt-1">今天买的有点多，可以分两顿哦 😄</p>
             )}
           </div>
 
-          {/* Recent Ingredients */}
-          {recentIngredients.length > 0 && (
-            <div className="mt-3">
-              <p className="text-xs text-gray-400 mb-2">最近常用</p>
-              <div className="flex flex-wrap gap-2">
-                {recentIngredients.map((r) => (
+          {/* Selected chips */}
+          {selectedIngredients.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {selectedIngredients.map((ing) => (
+                <span
+                  key={ing.名称}
+                  className="flex items-center gap-1 bg-[#FFF0EB] text-[#FF6B47] text-sm px-3 py-1.5 rounded-full border border-[#FFD4C4] font-medium"
+                >
+                  {ing.来源 === '库存' && ing.新鲜度 && (
+                    <span className="text-xs">{getFreshnessEmoji(ing.新鲜度)}</span>
+                  )}
+                  {ing.名称}
                   <button
-                    key={r}
-                    onClick={() => addIngredient(r)}
-                    disabled={ingredients.includes(r)}
-                    className={`px-3 py-1 rounded-full text-xs border transition-all active:scale-95 ${
-                      ingredients.includes(r)
-                        ? 'bg-gray-100 text-gray-300 border-gray-100 cursor-default'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-[#FF6B47] hover:text-[#FF6B47]'
-                    }`}
+                    onClick={() => removeSelectedIngredient(ing.名称)}
+                    className="ml-0.5 hover:text-red-500 transition-colors"
+                    aria-label={`删除 ${ing.名称}`}
                   >
-                    {r}
+                    <X size={13} />
                   </button>
-                ))}
-              </div>
+                </span>
+              ))}
             </div>
           )}
+
+          {/* Temporary supplement */}
+          <div className="mt-2">
+            {!showExtraInput ? (
+              <button
+                onClick={() => setShowExtraInput(true)}
+                className="text-xs text-gray-400 flex items-center gap-1 py-1 active:scale-95 transition-transform"
+              >
+                <Plus size={13} />
+                还有别的（亲戚送的、菜市场买的）
+              </button>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 mt-2 space-y-3">
+                <input
+                  type="text"
+                  value={extraName}
+                  onChange={(e) => setExtraName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddExtra()}
+                  placeholder="食材名…"
+                  autoFocus
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FF6B47]"
+                />
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={extraSaveToLib}
+                    onChange={(e) => setExtraSaveToLib(e.target.checked)}
+                    className="accent-[#FF6B47]"
+                  />
+                  顺手存进食材库
+                </label>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setShowExtraInput(false); setExtraName(''); }}
+                    className="px-4 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-xl active:scale-95 transition-transform"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleAddExtra}
+                    className="px-4 py-1.5 text-sm text-white bg-[#FF6B47] rounded-xl active:scale-95 transition-transform"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* Fatigue Section */}
+        {/* ── 库存卡片 ───────────────────────────── */}
+        {inventoryItems.length > 0 ? (
+          <section>
+            <p className="text-sm font-semibold text-[#2D2D2D] mb-2">
+              📦 你冰箱里还有（{inventoryItems.length}）
+            </p>
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              {displayedInventory.map((item) => {
+                const freshness = getFreshness(item);
+                const days = daysSince(item.入库时间);
+                const isAdded = ingredientNames.includes(item.名称);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleInventoryItem(item)}
+                    className={`w-full flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0 active:bg-gray-50 transition-colors text-left ${isAdded ? 'bg-[#FFF0EB]' : ''}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{getFreshnessEmoji(freshness)}</span>
+                      <span className={`text-sm font-medium ${isAdded ? 'text-[#FF6B47]' : 'text-[#2D2D2D]'}`}>
+                        {item.名称}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {freshness} · {days === 0 ? '今天' : `${days}天前`}
+                      </span>
+                    </div>
+                    {isAdded ? (
+                      <span className="text-xs text-[#FF6B47] font-medium">✓ 已加入</span>
+                    ) : (
+                      <span className="text-xs text-gray-300">点击加入</span>
+                    )}
+                  </button>
+                );
+              })}
+
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <button
+                  onClick={addAllInventory}
+                  className="text-xs text-[#FF6B47] font-medium active:scale-95 transition-transform"
+                >
+                  全部加入
+                </button>
+                {inventoryItems.length > 5 && (
+                  <button
+                    onClick={() => setInventoryExpanded((v) => !v)}
+                    className="flex items-center gap-1 text-xs text-gray-400 active:scale-95 transition-transform"
+                  >
+                    {inventoryExpanded ? (
+                      <><ChevronUp size={13} />收起</>
+                    ) : (
+                      <><ChevronDown size={13} />展开全部（{inventoryItems.length} 项）</>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : showGuide ? (
+          <section>
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+              <div>
+                <p className="font-semibold text-amber-800">📦 还没建食材库</p>
+                <p className="text-sm text-amber-600 mt-1">上传一张订单截图，5 秒搞定</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => router.push('/inventory/upload')}
+                  className="flex-1 py-2 bg-amber-500 text-white text-sm rounded-xl font-medium active:scale-95 transition-transform"
+                >
+                  上传订单
+                </button>
+                <button
+                  onClick={dismissGuide}
+                  className="flex-1 py-2 border border-amber-300 text-amber-700 text-sm rounded-xl active:scale-95 transition-transform"
+                >
+                  稍后再说
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {/* ── 食材偏好 ───────────────────────────── */}
         <section>
-          <p className="text-sm font-semibold text-[#2D2D2D] mb-3">今天多累？</p>
+          <p className="text-sm font-semibold text-[#2D2D2D] mb-3">💡 想吃什么风格？</p>
+          <div className="flex gap-2">
+            {FOOD_PREFERENCE_OPTIONS.map((opt) => {
+              const selected = foodPreference === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setFoodPreference(opt.id)}
+                  style={{ transition: 'transform 200ms, background 150ms' }}
+                  className={`flex-1 flex flex-col items-center gap-1 py-3 px-2 rounded-2xl border-2 active:scale-95 ${
+                    selected
+                      ? 'border-[#FF6B47] bg-[#FF6B47] text-white'
+                      : 'border-gray-200 bg-white text-gray-600'
+                  }`}
+                >
+                  <span className="text-xl">{opt.emoji}</span>
+                  <span className={`text-xs font-semibold ${selected ? 'text-white' : 'text-[#2D2D2D]'}`}>
+                    {opt.label}
+                  </span>
+                  <span className={`text-[10px] text-center leading-tight ${selected ? 'text-white/80' : 'text-gray-400'}`}>
+                    {opt.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── 疲劳度 ────────────────────────────── */}
+        <section>
+          <p className="text-sm font-semibold text-[#2D2D2D] mb-3">💪 今天多累？</p>
           <div className="flex flex-col gap-3">
             {FATIGUE_OPTIONS.map(({ level, emoji, label, desc }) => {
               const selected = fatigueLevel === level;
@@ -239,8 +482,7 @@ export default function HomePage() {
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
           }`}
         >
-          {/* [边界处理] 食材为空或未选疲劳度时置灰 */}
-          {!ingredients.length
+          {!selectedIngredients.length
             ? '先告诉我有什么食材'
             : !fatigueLevel
             ? '选一下今天多累'

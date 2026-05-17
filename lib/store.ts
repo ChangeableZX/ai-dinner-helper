@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { Recipe, FatigueLevel } from '@/types';
+import type { Recipe, FatigueLevel, FoodPreference, SelectedIngredient } from '@/types';
 
 interface AppStore {
   // Session state — not persisted to localStorage
-  ingredients: string[];
+  selectedIngredients: SelectedIngredient[];
   fatigueLevel: FatigueLevel | null;
+  foodPreference: FoodPreference;
   recipesMap: Record<string, Recipe>;
   selectedRecipeId: string | null;
   excludedDishes: string[];
@@ -14,10 +15,14 @@ interface AppStore {
   p0Warning: string | null;
   currentCookingStep: number;
 
-  setIngredients: (ingredients: string[]) => void;
-  addIngredient: (ingredient: string) => void;
-  removeIngredient: (ingredient: string) => void;
+  // Derived convenience getter
+  getIngredientNames: () => string[];
+
+  setSelectedIngredients: (ings: SelectedIngredient[]) => void;
+  addSelectedIngredient: (ing: SelectedIngredient) => void;
+  removeSelectedIngredient: (名称: string) => void;
   setFatigueLevel: (level: FatigueLevel | null) => void;
+  setFoodPreference: (pref: FoodPreference) => void;
   setRecipes: (recipes: Recipe[]) => void;
   setSelectedRecipeId: (id: string | null) => void;
   addExcludedDish: (name: string) => void;
@@ -33,8 +38,9 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
-  ingredients: [],
+  selectedIngredients: [],
   fatigueLevel: null,
+  foodPreference: 'default',
   recipesMap: {},
   selectedRecipeId: null,
   excludedDishes: [],
@@ -44,21 +50,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
   p0Warning: null,
   currentCookingStep: 0,
 
-  setIngredients: (ingredients) => set({ ingredients }),
+  getIngredientNames: () => get().selectedIngredients.map((i) => i.名称),
 
-  addIngredient: (ingredient) =>
+  setSelectedIngredients: (ings) => set({ selectedIngredients: ings }),
+
+  addSelectedIngredient: (ing) =>
     set((state) => ({
-      ingredients: state.ingredients.includes(ingredient)
-        ? state.ingredients
-        : [...state.ingredients, ingredient],
+      selectedIngredients: state.selectedIngredients.some((i) => i.名称 === ing.名称)
+        ? state.selectedIngredients
+        : [...state.selectedIngredients, ing],
     })),
 
-  removeIngredient: (ingredient) =>
+  removeSelectedIngredient: (名称) =>
     set((state) => ({
-      ingredients: state.ingredients.filter((i) => i !== ingredient),
+      selectedIngredients: state.selectedIngredients.filter((i) => i.名称 !== 名称),
     })),
 
   setFatigueLevel: (level) => set({ fatigueLevel: level }),
+
+  setFoodPreference: (pref) => set({ foodPreference: pref }),
 
   setRecipes: (recipes) => {
     const map: Record<string, Recipe> = {};
@@ -88,8 +98,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   resetSession: () =>
     set({
-      ingredients: [],
+      selectedIngredients: [],
       fatigueLevel: null,
+      foodPreference: 'default',
       recipesMap: {},
       selectedRecipeId: null,
       excludedDishes: [],

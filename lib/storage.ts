@@ -69,4 +69,5 @@ export const STORAGE_KEYS = {
   USER_PROFILE: 'fanfan_user_profile',
   HISTORY: 'fanfan_history',
   RECENT_INGREDIENTS: 'fanfan_recent_ingredients',
+  INVENTORY_GUIDE_DISMISSED: 'fanfan_inv_guide_dismissed',
 } as const;

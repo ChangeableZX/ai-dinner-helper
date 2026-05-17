@@ -51,6 +51,9 @@ export async function POST(request: NextRequest) {
   try {
     const body: RecommendRequest = await request.json();
 
+    // Derive plain string[] for validator (which expects string names)
+    const ingredientNames = body.ingredients.map((i) => i.名称);
+
     // [边界处理] Mock 模式 — 无 API Key 时自动使用 mock 数据演示 UI
     if (!process.env.OPENAI_API_KEY) {
       await new Promise((r) => setTimeout(r, 1500));
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
     try {
       result = parseAndValidateResponse(
         rawText,
-        body.ingredients,
+        ingredientNames,
         body.userProfile.调料库,
         body.fatigueLevel,
       );
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // [P0] 检查核心食材覆盖，仅附带警告，不额外调用 LLM（避免超时）
-    const p0Items = extractP0Ingredients(body.ingredients);
+    const p0Items = extractP0Ingredients(ingredientNames);
     const missedP0 = checkP0Coverage(result.recipes, p0Items);
     const p0Warning =
       missedP0.length > 0

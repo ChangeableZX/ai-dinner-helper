@@ -10,7 +10,8 @@ import type { Recipe, HistoryRecord } from '@/types';
 export default function RecipePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { getRecipeById, fatigueLevel, ingredients, setSelectedRecipeId } = useAppStore();
+  const { getRecipeById, fatigueLevel, getIngredientNames, setSelectedRecipeId } = useAppStore();
+  const ingredients = getIngredientNames();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [prepDone, setPrepDone] = useState<boolean[]>([]);
