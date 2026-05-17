@@ -388,8 +388,17 @@ function FeedbackModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-end z-50">
-      <div className="w-full max-w-[480px] mx-auto bg-[#FAF7F2] rounded-t-3xl p-6 pb-10 overflow-y-auto max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/40 flex items-end z-50" onClick={() => onDismiss([])}>
+      <div
+        className="relative w-full max-w-[480px] mx-auto bg-[#FAF7F2] rounded-t-3xl p-6 pb-10 overflow-y-auto max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => onDismiss([])}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 active:scale-95 transition-transform"
+        >
+          <X size={16} />
+        </button>
         <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
 
         <h2 className="text-xl font-bold text-[#2D2D2D] text-center mb-2">今天这道菜怎么样？</h2>
@@ -492,12 +501,79 @@ function FeedbackModal({
         )}
 
         <button
-          onClick={handleSubmit}
-          disabled={!rating}
-          className="w-full bg-[#FF6B47] disabled:opacity-40 text-white py-4 rounded-2xl font-semibold text-base active:scale-[0.98] transition-transform"
+          onClick={rating ? handleSubmit : () => onDismiss([])}
+          className={`w-full py-4 rounded-2xl font-semibold text-base active:scale-[0.98] transition-all ${
+            rating
+              ? 'bg-[#FF6B47] text-white shadow-lg shadow-[#FF6B47]/30'
+              : 'bg-gray-100 text-gray-500'
+          }`}
         >
-          {rating ? '提交，回首页' : '先选个评价'}
+          {rating ? '提交' : '跳过反馈'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Decision Overlay ─────────────────────────────────────────────
+function DecisionOverlay({
+  recipeName,
+  onContinue,
+  onEnd,
+}: {
+  recipeName: string;
+  onContinue: () => void;
+  onEnd: () => void;
+}) {
+  const [countdown, setCountdown] = useState(3);
+  const navigatedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (countdown === 0 && !navigatedRef.current) {
+      navigatedRef.current = true;
+      onEnd();
+    }
+  }, [countdown, onEnd]);
+
+  function handleContinue() {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    onContinue();
+  }
+
+  function handleEnd() {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    onEnd();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+      <div className="bg-white rounded-3xl p-8 text-center w-full max-w-[340px] shadow-2xl">
+        <p className="text-5xl mb-4">🍽️</p>
+        <h2 className="text-xl font-bold text-[#2D2D2D] mb-2">{recipeName} 搞定！</h2>
+        <p className="text-gray-400 text-sm mb-8">今晚还想做一道吗？</p>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={handleContinue}
+            className="py-4 rounded-2xl bg-[#FF6B47] text-white font-semibold text-base active:scale-[0.98] transition-all shadow-lg shadow-[#FF6B47]/30"
+          >
+            继续做一道
+          </button>
+          <button
+            onClick={handleEnd}
+            className="py-4 rounded-2xl bg-gray-100 text-gray-500 font-medium text-sm active:scale-[0.98] transition-all"
+          >
+            今晚就这样（{countdown}s）
+          </button>
+        </div>
       </div>
     </div>
   );

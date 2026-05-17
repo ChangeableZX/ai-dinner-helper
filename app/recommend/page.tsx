@@ -54,7 +54,7 @@ export default function RecommendPage() {
   const {
     selectedIngredients, fatigueLevel, foodPreference, recipesMap, excludedDishes, retryCount,
     isLoading, error, p0Warning, setRecipes, setLoading, setError, setP0Warning,
-    addExcludedDish, incrementRetry, setSelectedRecipeId,
+    addExcludedDish, incrementRetry, setSelectedRecipeId, doneRecipeIds, recentlyUsedIngredientNames,
   } = useAppStore();
 
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
@@ -233,14 +233,23 @@ export default function RecommendPage() {
               </div>
             )}
 
-            {recipes.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                recipe={recipe}
-                selectedIngredients={selectedIngredients}
-                onSelect={() => handleSelect(recipe)}
-              />
-            ))}
+            {recipes.map((recipe) => {
+              const isDone = doneRecipeIds.includes(recipe.id);
+              const hasUsedIngredient = !isDone && recentlyUsedIngredientNames.length > 0 &&
+                recipe.ingredients.some((ing) =>
+                  recentlyUsedIngredientNames.some((used) => loosematch(ing.name, used))
+                );
+              return (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  selectedIngredients={selectedIngredients}
+                  onSelect={() => handleSelect(recipe)}
+                  isDone={isDone}
+                  hasUsedIngredient={hasUsedIngredient}
+                />
+              );
+            })}
 
             {p0Warning && (
               <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-sm text-orange-700">
@@ -253,7 +262,7 @@ export default function RecommendPage() {
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-gray-200 text-gray-500 text-sm font-medium active:scale-[0.98] transition-all bg-white"
             >
               <RefreshCw size={16} />
-              都不想做，重新推荐
+              基于剩余食材换一批
             </button>
           </div>
         )}
@@ -263,11 +272,13 @@ export default function RecommendPage() {
 }
 
 function RecipeCard({
-  recipe, selectedIngredients, onSelect,
+  recipe, selectedIngredients, onSelect, isDone, hasUsedIngredient,
 }: {
   recipe: Recipe;
   selectedIngredients: SelectedIngredient[];
   onSelect: () => void;
+  isDone?: boolean;
+  hasUsedIngredient?: boolean;
 }) {
   const [statsOpen, setStatsOpen] = useState(false);
 
@@ -275,9 +286,14 @@ function RecipeCard({
   const hasInventoryIngredients = selectedIngredients.some((i) => i.来源 === '库存');
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className={`rounded-2xl shadow-sm border overflow-hidden ${isDone ? 'bg-gray-50 border-gray-100 opacity-70' : 'bg-white border-gray-100'}`}>
       <div className="p-5">
-        <h2 className="text-xl font-bold text-[#2D2D2D] mb-1">{recipe.name}</h2>
+        <div className="flex items-start justify-between mb-1">
+          <h2 className={`text-xl font-bold ${isDone ? 'text-gray-400' : 'text-[#2D2D2D]'}`}>{recipe.name}</h2>
+          {isDone && (
+            <span className="flex-shrink-0 ml-2 text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">✓ 已做</span>
+          )}
+        </div>
         <p className="text-gray-400 text-sm mb-4">{recipe.reason}</p>
 
         <div className="flex gap-2 flex-wrap mb-4">
@@ -340,11 +356,21 @@ function RecipeCard({
           </div>
         )}
 
+        {hasUsedIngredient && (
+          <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+            ⚠️ 部分食材已用完，可能要换一道
+          </p>
+        )}
         <button
-          onClick={onSelect}
-          className="w-full bg-[#FF6B47] text-white py-3 rounded-xl font-semibold text-sm active:scale-[0.98] transition-transform"
+          onClick={isDone ? undefined : onSelect}
+          disabled={isDone}
+          className={`w-full py-3 rounded-xl font-semibold text-sm transition-transform ${
+            isDone
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-[#FF6B47] text-white active:scale-[0.98]'
+          }`}
         >
-          选这个 →
+          {isDone ? '已做过了' : '选这个 →'}
         </button>
       </div>
     </div>
