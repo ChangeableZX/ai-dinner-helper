@@ -7,7 +7,8 @@ import { useAppStore } from '@/lib/store';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
 import { inventoryStore } from '@/lib/inventory-store';
 import { getFreshness, getFreshnessEmoji } from '@/lib/freshness';
-import type { FatigueLevel, FoodPreference, SelectedIngredient, InventoryItem } from '@/types';
+import type { FatigueLevel, FoodPreference, SelectedIngredient, InventoryItem, Category } from '@/types';
+import { groupByCategory } from '@/lib/category-groups';
 
 const FATIGUE_OPTIONS: Array<{
   level: FatigueLevel;
@@ -66,6 +67,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useState('');
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [inventoryExpanded, setInventoryExpanded] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<Category>>(new Set());
   const [showExtraInput, setShowExtraInput] = useState(false);
   const [extraName, setExtraName] = useState('');
   const [extraSaveToLib, setExtraSaveToLib] = useState(true);
@@ -89,7 +91,8 @@ export default function HomePage() {
   }, []);
 
   const expiringItems = inventoryItems.filter((i) => getFreshness(i) === '可能过期');
-  const displayedInventory = inventoryExpanded ? inventoryItems : inventoryItems.slice(0, 5);
+  const inventoryGroups = groupByCategory(inventoryItems);
+  const hasCollapsible = inventoryExpanded || inventoryGroups.some((g) => g.items.length > 3);
 
   function handleInputChange(val: string) {
     setInputValue(val);
@@ -152,6 +155,19 @@ export default function HomePage() {
       }
     });
     setFoodPreference('clear_stock');
+  }
+
+  function toggleGroupExpand(cat: Category) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  }
+
+  function setGlobalExpanded(v: boolean) {
+    setInventoryExpanded(v);
+    if (!v) setExpandedGroups(new Set());
   }
 
   function handleAddExtra() {
@@ -336,34 +352,72 @@ export default function HomePage() {
               📦 你冰箱里还有（{inventoryItems.length}）
             </p>
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              {displayedInventory.map((item) => {
-                const freshness = getFreshness(item);
-                const days = daysSince(item.入库时间);
-                const isAdded = ingredientNames.includes(item.名称);
+              {inventoryGroups.map((group, gIdx) => {
+                const isGroupExpanded = inventoryExpanded || expandedGroups.has(group.category);
+                const displayItems = isGroupExpanded ? group.items : group.items.slice(0, 3);
+                const hiddenCount = group.items.length - 3;
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => toggleInventoryItem(item)}
-                    className={`w-full flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0 active:bg-gray-50 transition-colors text-left ${isAdded ? 'bg-[#FFF0EB]' : ''}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span>{getFreshnessEmoji(freshness)}</span>
-                      <span className={`text-sm font-medium ${isAdded ? 'text-[#FF6B47]' : 'text-[#2D2D2D]'}`}>
-                        {item.名称}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {freshness} · {days === 0 ? '今天' : `${days}天前`}
-                      </span>
+                  <div key={group.category} className={gIdx > 0 ? 'border-t border-gray-100' : ''}>
+                    {/* Group header */}
+                    <div className="px-4 pt-2.5 pb-0.5 flex items-center gap-1.5">
+                      <span className="text-sm leading-none">{group.emoji}</span>
+                      <span className="text-xs font-medium text-gray-400">{group.category}</span>
+                      <span className="text-xs text-gray-300">({group.items.length})</span>
                     </div>
-                    {isAdded ? (
-                      <span className="text-xs text-[#FF6B47] font-medium">✓ 已加入</span>
-                    ) : (
-                      <span className="text-xs text-gray-300">点击加入</span>
-                    )}
-                  </button>
+                    {/* Items */}
+                    <div className="divide-y divide-gray-50">
+                      {displayItems.map((item) => {
+                        const freshness = getFreshness(item);
+                        const days = daysSince(item.入库时间);
+                        const isAdded = ingredientNames.includes(item.名称);
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => toggleInventoryItem(item)}
+                            className={`w-full flex items-center justify-between px-4 py-3 active:bg-gray-50 transition-colors text-left ${isAdded ? 'bg-[#FFF0EB]' : ''}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{getFreshnessEmoji(freshness)}</span>
+                              <span className={`text-sm font-medium ${isAdded ? 'text-[#FF6B47]' : 'text-[#2D2D2D]'}`}>
+                                {item.名称}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {freshness} · {days === 0 ? '今天' : `${days}天前`}
+                              </span>
+                            </div>
+                            {isAdded ? (
+                              <span className="text-xs text-[#FF6B47] font-medium">✓ 已加入</span>
+                            ) : (
+                              <span className="text-xs text-gray-300">点击加入</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {/* Per-group expand / collapse */}
+                      {!inventoryExpanded && hiddenCount > 0 && !expandedGroups.has(group.category) && (
+                        <button
+                          onClick={() => toggleGroupExpand(group.category)}
+                          className="w-full px-4 py-2 text-xs text-gray-400 flex items-center gap-1 active:bg-gray-50 transition-colors"
+                        >
+                          <ChevronDown size={12} />
+                          展开全部（{hiddenCount} 项）
+                        </button>
+                      )}
+                      {!inventoryExpanded && expandedGroups.has(group.category) && group.items.length > 3 && (
+                        <button
+                          onClick={() => toggleGroupExpand(group.category)}
+                          className="w-full px-4 py-2 text-xs text-gray-400 flex items-center gap-1 active:bg-gray-50 transition-colors"
+                        >
+                          <ChevronUp size={12} />
+                          收起
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
 
+              {/* Card footer */}
               <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
                 <button
                   onClick={addAllInventory}
@@ -371,9 +425,9 @@ export default function HomePage() {
                 >
                   全部加入
                 </button>
-                {inventoryItems.length > 5 && (
+                {hasCollapsible && (
                   <button
-                    onClick={() => setInventoryExpanded((v) => !v)}
+                    onClick={() => setGlobalExpanded(!inventoryExpanded)}
                     className="flex items-center gap-1 text-xs text-gray-400 active:scale-95 transition-transform"
                   >
                     {inventoryExpanded ? (

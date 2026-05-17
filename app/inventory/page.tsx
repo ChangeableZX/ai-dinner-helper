@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, SlidersHorizontal, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { InventoryItem } from '@/types';
+import type { InventoryItem, Category } from '@/types';
 import { inventoryStore } from '@/lib/inventory-store';
 import { getFreshness } from '@/lib/freshness';
+import { CATEGORY_ORDER, CATEGORY_META, getItemCategory } from '@/lib/category-groups';
 
 import StatsBar from './components/StatsBar';
 import FilterTabs, { type FilterTab } from './components/FilterTabs';
@@ -25,6 +26,8 @@ export default function InventoryPage() {
   const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState<FilterTab>('全部');
+  const [categoryFilter, setCategoryFilter] = useState<Category | null>(null);
+  const [categoryPanelOpen, setCategoryPanelOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({ open: false, mode: 'add' });
   const [newlyAddedIds, setNewlyAddedIds] = useState<Set<string>>(new Set());
 
@@ -47,11 +50,14 @@ export default function InventoryPage() {
     .filter((i) => i.状态 === '在库')
     .sort((a, b) => new Date(a.入库时间).getTime() - new Date(b.入库时间).getTime());
 
-  // Apply freshness filter
-  const filteredActive =
-    filter === '全部'
-      ? activeItems
-      : activeItems.filter((i) => getFreshness(i) === filter);
+  // Apply freshness + category filter (AND)
+  const filteredActive = activeItems.filter((i) => {
+    const freshnessMatch = filter === '全部' || getFreshness(i) === filter;
+    const categoryMatch = categoryFilter === null || getItemCategory(i) === categoryFilter;
+    return freshnessMatch && categoryMatch;
+  });
+
+  const totalExpired = activeItems.filter((i) => getFreshness(i) === '可能过期').length;
 
   // Used items sorted by most recently used first
   const usedItems = items
@@ -155,14 +161,41 @@ export default function InventoryPage() {
           <EmptyState onAdd={openAdd} onUpload={() => router.push('/inventory/upload')} />
         ) : (
           <>
-            <StatsBar items={items} />
-            <FilterTabs active={filter} onChange={setFilter} />
+            <StatsBar filteredActive={filteredActive} totalExpired={totalExpired} />
+
+            {/* Freshness tabs + category filter button */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 min-w-0">
+                <FilterTabs active={filter} onChange={setFilter} />
+              </div>
+              <button
+                onClick={() => categoryFilter ? setCategoryFilter(null) : setCategoryPanelOpen(true)}
+                className={`flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
+                  categoryFilter
+                    ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
+                    : 'bg-white text-gray-500 border-gray-200'
+                }`}
+              >
+                {categoryFilter ? (
+                  <>
+                    <span>{CATEGORY_META[categoryFilter].emoji}</span>
+                    <span>{categoryFilter}</span>
+                    <X size={13} />
+                  </>
+                ) : (
+                  <>
+                    <SlidersHorizontal size={14} />
+                    <span>分类</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             {/* Active items */}
             <div className="space-y-3">
-              {filteredActive.length === 0 && filter !== '全部' && (
+              {filteredActive.length === 0 && (filter !== '全部' || categoryFilter !== null) && (
                 <p className="text-center text-sm text-gray-400 py-8">
-                  暂时没有「{filter}」状态的食材
+                  暂时没有符合条件的食材
                 </p>
               )}
               {filteredActive.map((item) => (
@@ -216,6 +249,54 @@ export default function InventoryPage() {
             >
               ➕ 添加食材
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Category filter bottom sheet */}
+      {categoryPanelOpen && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setCategoryPanelOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/30" />
+          <div
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-2xl px-5 pt-5 pb-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-[#2D2D2D] mb-4">按分类筛选</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setCategoryFilter(null); setCategoryPanelOpen(false); }}
+                className={`px-4 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
+                  categoryFilter === null
+                    ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
+                    : 'bg-white text-gray-500 border-gray-200'
+                }`}
+              >
+                全部（{activeItems.length}）
+              </button>
+              {CATEGORY_ORDER.map((cat) => {
+                const count = activeItems.filter((i) => getItemCategory(i) === cat).length;
+                if (count === 0) return null;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      setCategoryFilter(categoryFilter === cat ? null : cat);
+                      setCategoryPanelOpen(false);
+                    }}
+                    className={`px-4 py-2 rounded-full text-sm font-medium border transition-all active:scale-95 ${
+                      categoryFilter === cat
+                        ? 'bg-[#FF6B47] text-white border-[#FF6B47]'
+                        : 'bg-white text-gray-500 border-gray-200'
+                    }`}
+                  >
+                    {CATEGORY_META[cat].emoji} {cat}（{count}）
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

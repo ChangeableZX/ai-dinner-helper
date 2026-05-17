@@ -11,7 +11,7 @@ interface FilterTabsProps {
 
 export default function FilterTabs({ active, onChange }: FilterTabsProps) {
   return (
-    <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-1">
+    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
       {TABS.map((tab) => (
         <button
           key={tab}
