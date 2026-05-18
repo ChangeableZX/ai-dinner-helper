@@ -332,8 +332,20 @@ function FeedbackModal({
   const [reasons, setReasons] = useState<string[]>([]);
   const [note, setNote] = useState('');
 
-  // Inventory ingredients used in this session
-  const inventoryIngredients = selectedIngredients.filter((i) => i.来源 === '库存');
+  // 本菜谱实际用到的食材名（'今日食材' = 来自用户选择，不含调料库）
+  const recipeIngNames = new Set(
+    recipe.ingredients.filter((i) => i.source === '今日食材').map((i) => i.name),
+  );
+
+  // 交叉过滤：来自库存 且 确实出现在本菜谱里
+  const inventoryIngredients = selectedIngredients.filter(
+    (i) => i.来源 === '库存' && recipeIngNames.has(i.名称),
+  );
+
+  if (inventoryIngredients.length === 0) {
+    console.warn('[Feedback] 缺少可追踪的库存食材，跳过食材消耗追踪');
+  }
+
   // Default all checked (assume eaten)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(
     new Set(inventoryIngredients.map((i) => i.名称)),
