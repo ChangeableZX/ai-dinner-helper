@@ -79,7 +79,8 @@ export default function UploadPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? '识别失败，请重试');
       sessionStorage.setItem('ocr_pending_result', JSON.stringify({
-        items: data.items,
+        食材: data.食材 ?? [],
+        调料: data.调料 ?? [],
         warnings: data.warnings ?? [],
       }));
       router.push('/inventory/confirm');

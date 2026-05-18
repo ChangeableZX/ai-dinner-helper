@@ -1,200 +1,102 @@
-import type { Recipe } from '@/types';
+import type { DishSummary, RawRecipeDetail } from '@/types';
 
-export const MOCK_RECIPES: Recipe[] = [
+// ─── 精简标题卡 mock（推荐 API 用）──────────────────────────────────
+
+export const MOCK_SUMMARIES: DishSummary[] = [
   {
-    id: 'mock_tomato_egg',
-    name: '西红柿炒鸡蛋',
-    reason: '经典家常，10分钟轻松搞定',
-    durationMinutes: 10,
-    difficulty: '极简',
-    hasSmoke: true,
-    utensils: ['炒锅', '燃气灶'],
-    ingredients: [
-      { name: '鸡蛋', amount: '2个', source: '今日食材' },
-      { name: '番茄', amount: '1个', source: '今日食材' },
-      { name: '盐', amount: '适量', source: '调料库' },
-      { name: '糖', amount: '少许', source: '调料库' },
-      { name: '生抽', amount: '少许', source: '调料库' },
-    ],
-    prepSteps: [
-      { action: '鸡蛋打散，加少许盐搅匀', durationSeconds: 30 },
-      { action: '番茄切块备用', durationSeconds: 60 },
-    ],
-    cookingSteps: [
-      {
-        order: 1,
-        action: '热锅冷油，油热后倒入蛋液翻炒至凝固',
-        durationSeconds: 90,
-        keyTip: '油要充分热透，蛋才能炒得嫩滑',
-      },
-      {
-        order: 2,
-        action: '盛出鸡蛋，原锅加少量油，放番茄大火翻炒出汁',
-        durationSeconds: 120,
-        keyTip: '大火逼出番茄汁水，口感更好',
-      },
-      {
-        order: 3,
-        action: '倒回鸡蛋，加盐、少许糖、生抽翻炒均匀',
-        durationSeconds: 60,
-        keyTip: '糖是去酸的关键，不要省略',
-      },
-      {
-        order: 4,
-        action: '出锅装盘',
-        durationSeconds: 10,
-      },
-    ],
-    usedCoreIngredients: ['鸡蛋'],
-    ingredientUsageRate: 1.0,
+    id: 'mock_sum_0',
+    菜名: '西红柿炒鸡蛋',
+    适配理由: '经典家常，10分钟搞定',
+    耗时分钟: 10,
+    难度: '极简',
+    是否油烟: true,
+    使用的食材: ['鸡蛋', '番茄'],
   },
   {
-    id: 'mock_greens_egg',
-    name: '青菜炒鸡蛋',
-    reason: '清淡营养，8分钟完成',
-    durationMinutes: 8,
-    difficulty: '极简',
-    hasSmoke: true,
-    utensils: ['炒锅', '燃气灶'],
-    ingredients: [
-      { name: '鸡蛋', amount: '2个', source: '今日食材' },
-      { name: '青菜', amount: '一把', source: '今日食材' },
-      { name: '盐', amount: '适量', source: '调料库' },
-      { name: '蒜', amount: '2瓣', source: '调料库' },
-    ],
-    prepSteps: [
-      { action: '鸡蛋打散备用', durationSeconds: 20 },
-      { action: '青菜洗净切段，蒜切末', durationSeconds: 60 },
-    ],
-    cookingSteps: [
-      {
-        order: 1,
-        action: '热锅热油，炒蛋液至半熟盛出',
-        durationSeconds: 60,
-        keyTip: '半熟即可，后面还要回锅',
-      },
-      {
-        order: 2,
-        action: '锅内加油，爆香蒜末30秒',
-        durationSeconds: 30,
-        keyTip: '蒜末变微黄立刻放菜，别炒焦',
-      },
-      {
-        order: 3,
-        action: '放青菜大火翻炒1分钟',
-        durationSeconds: 60,
-        parallelTask: '同时把放蛋的盘子准备好',
-      },
-      {
-        order: 4,
-        action: '倒回鸡蛋，加盐翻炒均匀出锅',
-        durationSeconds: 30,
-      },
-    ],
-    usedCoreIngredients: ['鸡蛋'],
-    ingredientUsageRate: 1.0,
+    id: 'mock_sum_1',
+    菜名: '蒸鸡蛋羹',
+    适配理由: '嫩滑无油烟，超省事',
+    耗时分钟: 13,
+    难度: '极简',
+    是否油烟: false,
+    使用的食材: ['鸡蛋'],
   },
   {
-    id: 'mock_tomato_egg_noodle',
-    name: '番茄鸡蛋面',
-    reason: '一碗解决，暖胃又省心',
-    durationMinutes: 15,
-    difficulty: '简单',
-    hasSmoke: false,
-    utensils: ['锅', '燃气灶'],
-    ingredients: [
-      { name: '鸡蛋', amount: '2个', source: '今日食材' },
-      { name: '番茄', amount: '1个', source: '今日食材' },
-      { name: '面条', amount: '100g', source: '今日食材' },
-      { name: '盐', amount: '适量', source: '调料库' },
-      { name: '生抽', amount: '少许', source: '调料库' },
-      { name: '香油', amount: '几滴', source: '调料库' },
-    ],
-    prepSteps: [
-      { action: '番茄切块', durationSeconds: 60 },
-      { action: '鸡蛋打散', durationSeconds: 20 },
-    ],
-    cookingSteps: [
-      {
-        order: 1,
-        action: '锅内烧水至沸腾',
-        durationSeconds: 180,
-        keyTip: '等水完全沸腾再下面，口感更好',
-        parallelTask: '烧水同时开始准备番茄蛋卤',
-      },
-      {
-        order: 2,
-        action: '另起小锅，热油炒蛋至半熟，加番茄翻炒出汁',
-        durationSeconds: 120,
-      },
-      {
-        order: 3,
-        action: '加水200ml，煮开后加盐、生抽调味，保持小火',
-        durationSeconds: 90,
-        keyTip: '卤汁浓淡可加水调节',
-      },
-      {
-        order: 4,
-        action: '大锅下面条，按包装时间煮熟后捞出',
-        durationSeconds: 360,
-        keyTip: '面条煮至无白心即可',
-      },
-      {
-        order: 5,
-        action: '面条放碗，浇上番茄蛋卤，滴香油',
-        durationSeconds: 20,
-        keyTip: '香油最后放，保持香气',
-      },
-    ],
-    usedCoreIngredients: ['鸡蛋'],
-    ingredientUsageRate: 1.0,
+    id: 'mock_sum_2',
+    菜名: '番茄鸡蛋面',
+    适配理由: '一碗搞定，暖胃省心',
+    耗时分钟: 15,
+    难度: '简单',
+    是否油烟: false,
+    使用的食材: ['鸡蛋', '番茄', '面条'],
   },
 ];
 
-// Dev-only: used when MOCK_FORCE_P0_FAIL=1 to test the P0 warning UI
-export const MOCK_RECIPES_P0_FAIL: Recipe[] = [
-  {
-    id: 'mock_p0fail_potato',
-    name: '土豆泥',
-    reason: '简单省事，10分钟搞定',
-    durationMinutes: 10,
-    difficulty: '极简',
-    hasSmoke: false,
-    utensils: ['锅', '燃气灶'],
-    ingredients: [
-      { name: '土豆', amount: '2个', source: '今日食材' },
-      { name: '盐', amount: '适量', source: '调料库' },
-      { name: '黄油', amount: '少许', source: '调料库' },
+// ─── 完整菜谱 mock（详情 API 用，按菜名索引）────────────────────────
+
+export const MOCK_DETAIL_MAP: Record<string, RawRecipeDetail> = {
+  西红柿炒鸡蛋: {
+    菜名: '西红柿炒鸡蛋',
+    厨具: ['炒锅', '燃气灶'],
+    食材: [
+      { 名称: '鸡蛋', 数量: '2个', 来源: '今日输入' },
+      { 名称: '番茄', 数量: '1个', 来源: '今日输入' },
+      { 名称: '盐', 数量: '适量', 来源: '调料库' },
+      { 名称: '糖', 数量: '少许', 来源: '调料库' },
+      { 名称: '生抽', 数量: '少许', 来源: '调料库' },
     ],
-    prepSteps: [{ action: '土豆削皮切块', durationSeconds: 60 }],
-    cookingSteps: [
-      { order: 1, action: '土豆块放锅中，加水没过，煮15分钟至熟透', durationSeconds: 900 },
-      { order: 2, action: '沥干水，加盐和黄油，用叉子压成泥', durationSeconds: 60 },
+    预处理: [
+      { 动作: '鸡蛋打散，加少许盐搅匀', 耗时分钟: 0.5 },
+      { 动作: '番茄切块备用', 耗时分钟: 1 },
     ],
-    usedCoreIngredients: [],
-    ingredientUsageRate: 0.33,
+    步骤: [
+      { 序号: 1, 动作: '热锅冷油，油热后倒入蛋液翻炒至凝固', 耗时分钟: 1.5, 关键提示: '油要充分热透，蛋才能炒得嫩滑' },
+      { 序号: 2, 动作: '盛出鸡蛋，原锅加少量油，放番茄大火翻炒出汁', 耗时分钟: 2, 关键提示: '大火逼出番茄汁水，口感更好' },
+      { 序号: 3, 动作: '倒回鸡蛋，加盐、少许糖、生抽翻炒均匀', 耗时分钟: 1, 关键提示: '糖是去酸的关键，不要省略' },
+      { 序号: 4, 动作: '出锅装盘', 耗时分钟: 0.2 },
+    ],
   },
-  {
-    id: 'mock_p0fail_stir_veg',
-    name: '素炒时蔬',
-    reason: '清淡健康，8分钟完成',
-    durationMinutes: 8,
-    difficulty: '极简',
-    hasSmoke: true,
-    utensils: ['炒锅', '燃气灶'],
-    ingredients: [
-      { name: '土豆', amount: '1个', source: '今日食材' },
-      { name: '盐', amount: '适量', source: '调料库' },
-      { name: '生抽', amount: '少许', source: '调料库' },
+  蒸鸡蛋羹: {
+    菜名: '蒸鸡蛋羹',
+    厨具: ['蒸锅', '燃气灶'],
+    食材: [
+      { 名称: '鸡蛋', 数量: '2个', 来源: '今日输入' },
+      { 名称: '盐', 数量: '少许', 来源: '调料库' },
+      { 名称: '生抽', 数量: '少许', 来源: '调料库' },
+      { 名称: '香油', 数量: '几滴', 来源: '调料库' },
     ],
-    prepSteps: [{ action: '土豆切丝', durationSeconds: 60 }],
-    cookingSteps: [
-      { order: 1, action: '热锅热油，放土豆丝大火翻炒', durationSeconds: 120 },
-      { order: 2, action: '加盐、生抽调味，翻炒均匀出锅', durationSeconds: 30 },
+    预处理: [
+      { 动作: '鸡蛋打散，加温水（蛋:水=1:1.5比例），轻搅后用滤网过滤气泡', 耗时分钟: 2 },
     ],
-    usedCoreIngredients: [],
-    ingredientUsageRate: 0.33,
+    步骤: [
+      { 序号: 1, 动作: '蒸锅加水烧开', 耗时分钟: 3 },
+      { 序号: 2, 动作: '将蛋液碗放入蒸锅，小火蒸10分钟', 耗时分钟: 10, 关键提示: '全程小火，锅盖留一条缝防起泡' },
+      { 序号: 3, 动作: '取出后淋生抽、滴香油即可', 耗时分钟: 0.5 },
+    ],
   },
-];
+  番茄鸡蛋面: {
+    菜名: '番茄鸡蛋面',
+    厨具: ['锅', '燃气灶'],
+    食材: [
+      { 名称: '鸡蛋', 数量: '2个', 来源: '今日输入' },
+      { 名称: '番茄', 数量: '1个', 来源: '今日输入' },
+      { 名称: '面条', 数量: '100g', 来源: '今日输入' },
+      { 名称: '盐', 数量: '适量', 来源: '调料库' },
+      { 名称: '生抽', 数量: '少许', 来源: '调料库' },
+      { 名称: '香油', 数量: '几滴', 来源: '调料库' },
+    ],
+    预处理: [
+      { 动作: '番茄切块，鸡蛋打散备用', 耗时分钟: 1.5 },
+    ],
+    步骤: [
+      { 序号: 1, 动作: '锅内烧水至沸腾', 耗时分钟: 3, 并行任务: '同时另起小锅准备番茄蛋卤' },
+      { 序号: 2, 动作: '小锅热油，炒蛋至半熟，加番茄翻炒出汁，加水200ml，加盐生抽调味，保持小火', 耗时分钟: 3, 关键提示: '卤汁浓淡可加水调节' },
+      { 序号: 3, 动作: '大锅下面条，按包装时间煮熟后捞出', 耗时分钟: 5, 关键提示: '面条煮至无白心即可' },
+      { 序号: 4, 动作: '面条放碗，浇上番茄蛋卤，滴香油', 耗时分钟: 0.3, 关键提示: '香油最后放，保持香气' },
+    ],
+  },
+};
+
+// ─── 旧格式 mock（保留兼容，history 页面可能依赖）───────────────────
 
 export const MOCK_P0_WARNING = '检测到今日有牛肉等核心食材，但推荐方案均未能用上，建议直接煎/炒牛肉，或告诉我换个方向 😊';

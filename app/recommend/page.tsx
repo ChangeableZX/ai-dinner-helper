@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock, BarChart2, Wind, ChevronLeft, RefreshCw, ChevronDown } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { useRecipeCache, toRecipe } from '@/lib/recipe-cache';
 import { storageGet, STORAGE_KEYS } from '@/lib/storage';
-import type { Recipe, UserProfile, RecommendResponse, SelectedIngredient, IngredientUsageStats } from '@/types';
+import type { DishSummary, UserProfile, RecommendResponse, SelectedIngredient } from '@/types';
 
 const LOADING_MESSAGES = [
   '翻翻你的厨房…',
@@ -24,22 +25,19 @@ function loosematch(a: string, b: string): boolean {
 }
 
 function computeUsageStats(
-  recipe: Recipe,
+  summary: DishSummary,
   selectedIngredients: SelectedIngredient[],
-): IngredientUsageStats {
-  const recipeIngNames = recipe.ingredients
-    .filter((i) => i.source === '今日食材')
-    .map((i) => i.name);
-
+) {
+  const usedNames = summary.使用的食材;
   const inventoryItems = selectedIngredients.filter((i) => i.来源 === '库存');
   const inputItems = selectedIngredients.filter((i) => i.来源 !== '库存');
 
   const 已用库存食材 = inventoryItems
-    .filter((i) => recipeIngNames.some((n) => loosematch(n, i.名称)))
+    .filter((i) => usedNames.some((n) => loosematch(n, i.名称)))
     .map((i) => i.名称);
 
   const 已用今日输入 = inputItems
-    .filter((i) => recipeIngNames.some((n) => loosematch(n, i.名称)))
+    .filter((i) => usedNames.some((n) => loosematch(n, i.名称)))
     .map((i) => i.名称);
 
   const 未用上的库存 = inventoryItems
@@ -49,11 +47,68 @@ function computeUsageStats(
   return { 已用库存食材, 已用今日输入, 未用上的库存 };
 }
 
+function startPreloading(
+  summaries: DishSummary[],
+  selectedIngredients: SelectedIngredient[],
+  fatigueLevel: number,
+  foodPreference: string,
+  profile: UserProfile | null,
+) {
+  const userIngredients = selectedIngredients.map((i) => i.名称);
+
+  summaries.forEach((summary) => {
+    if (useRecipeCache.getState().getRecipe(summary.id)) return;
+    if (useRecipeCache.getState().isLoading(summary.id)) return;
+
+    useRecipeCache.getState().setLoading(summary.id, true);
+
+    fetch('/api/recipe-detail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        菜名: summary.菜名,
+        推荐时的食材: summary.使用的食材,
+        user_profile: {
+          调料库: profile?.seasonings ?? [],
+          设备: profile?.equipment ?? [],
+          技能等级:
+            profile?.skillLevel === 'beginner'
+              ? '新手'
+              : profile?.skillLevel === 'advanced'
+              ? '熟手'
+              : '能做几道家常',
+          辣度: profile?.spiceLevel ?? 2,
+          忌口: profile?.avoidances ?? [],
+          人数: profile?.servings ?? 1,
+        },
+        今日食材: selectedIngredients,
+        疲劳度: fatigueLevel,
+        食材偏好: foodPreference,
+      }),
+    })
+      .then((res) => res.json())
+      .then((rawDetail) => {
+        if (rawDetail.error) {
+          console.warn(`[Preload] 详情预加载失败 ${summary.id} (${summary.菜名}):`, rawDetail.error);
+          useRecipeCache.getState().setLoading(summary.id, false);
+          return;
+        }
+        const recipe = toRecipe(summary, rawDetail, userIngredients);
+        useRecipeCache.getState().setRecipe(summary.id, recipe);
+        console.log(`[Preload] 预加载完成：${summary.菜名}`);
+      })
+      .catch((err) => {
+        console.warn(`[Preload] 网络错误 ${summary.id}:`, err);
+        useRecipeCache.getState().setLoading(summary.id, false);
+      });
+  });
+}
+
 export default function RecommendPage() {
   const router = useRouter();
   const {
-    selectedIngredients, fatigueLevel, foodPreference, recipesMap, excludedDishes, retryCount,
-    isLoading, error, p0Warning, setRecipes, setLoading, setError, setP0Warning,
+    selectedIngredients, fatigueLevel, foodPreference, summariesMap, excludedDishes, retryCount,
+    isLoading, error, p0Warning, setSummaries, setLoading, setError, setP0Warning,
     addExcludedDish, incrementRetry, setSelectedRecipeId, doneRecipeIds, recentlyUsedIngredientNames,
   } = useAppStore();
 
@@ -80,7 +135,7 @@ export default function RecommendPage() {
 
   useEffect(() => {
     if (!selectedIngredients.length || !fatigueLevel) return;
-    if (Object.keys(recipesMap).length > 0) return;
+    if (Object.keys(summariesMap).length > 0) return;
     if (fetchInitiated.current) return;
     fetchInitiated.current = true;
     fetchRecommendations();
@@ -135,11 +190,14 @@ export default function RecommendPage() {
 
       const data: RecommendResponse = await res.json();
 
-      if (!data.success || !data.recipes?.length) {
+      if (!data.success || !data.方案?.length) {
         setError(data.error ?? '这些食材暂时想不到好方案');
       } else {
-        setRecipes(data.recipes);
+        setSummaries(data.方案);
         if (data.p0Warning) setP0Warning(data.p0Warning);
+
+        // 推荐结果出来后，立即并发后台预加载所有详情
+        startPreloading(data.方案, selectedIngredients, fatigueLevel!, foodPreference, profile);
       }
     } catch {
       setError('刚才走神了，再试一次');
@@ -149,18 +207,20 @@ export default function RecommendPage() {
   }
 
   function handleRetry() {
-    const currentNames = Object.values(recipesMap).map((r) => r.name);
+    const currentNames = Object.values(summariesMap).map((s) => s.菜名);
     currentNames.forEach((n) => addExcludedDish(n));
     incrementRetry();
+    useRecipeCache.getState().clear();
+    setSummaries([]);
     fetchRecommendations();
   }
 
-  function handleSelect(recipe: Recipe) {
-    setSelectedRecipeId(recipe.id);
-    router.push(`/recipe/${recipe.id}`);
+  function handleSelect(summary: DishSummary) {
+    setSelectedRecipeId(summary.id);
+    router.push(`/recipe/${summary.id}`);
   }
 
-  const recipes = Object.values(recipesMap);
+  const summaries = Object.values(summariesMap);
 
   return (
     <div className="flex flex-col min-h-screen page-enter">
@@ -225,7 +285,7 @@ export default function RecommendPage() {
         )}
 
         {/* Recipe Cards */}
-        {!isLoading && !error && recipes.length > 0 && (
+        {!isLoading && !error && summaries.length > 0 && (
           <div className="space-y-4 pb-32">
             {retryCount >= MAX_RETRY_FRIENDLY_MSG && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-700">
@@ -233,18 +293,20 @@ export default function RecommendPage() {
               </div>
             )}
 
-            {recipes.map((recipe) => {
-              const isDone = doneRecipeIds.includes(recipe.id);
-              const hasUsedIngredient = !isDone && recentlyUsedIngredientNames.length > 0 &&
-                recipe.ingredients.some((ing) =>
-                  recentlyUsedIngredientNames.some((used) => loosematch(ing.name, used))
+            {summaries.map((summary) => {
+              const isDone = doneRecipeIds.includes(summary.id);
+              const hasUsedIngredient =
+                !isDone &&
+                recentlyUsedIngredientNames.length > 0 &&
+                summary.使用的食材.some((ing) =>
+                  recentlyUsedIngredientNames.some((used) => loosematch(ing, used))
                 );
               return (
                 <RecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
+                  key={summary.id}
+                  summary={summary}
                   selectedIngredients={selectedIngredients}
-                  onSelect={() => handleSelect(recipe)}
+                  onSelect={() => handleSelect(summary)}
                   isDone={isDone}
                   hasUsedIngredient={hasUsedIngredient}
                 />
@@ -272,9 +334,9 @@ export default function RecommendPage() {
 }
 
 function RecipeCard({
-  recipe, selectedIngredients, onSelect, isDone, hasUsedIngredient,
+  summary, selectedIngredients, onSelect, isDone, hasUsedIngredient,
 }: {
-  recipe: Recipe;
+  summary: DishSummary;
   selectedIngredients: SelectedIngredient[];
   onSelect: () => void;
   isDone?: boolean;
@@ -282,43 +344,50 @@ function RecipeCard({
 }) {
   const [statsOpen, setStatsOpen] = useState(false);
 
-  const stats = computeUsageStats(recipe, selectedIngredients);
+  const stats = computeUsageStats(summary, selectedIngredients);
   const hasInventoryIngredients = selectedIngredients.some((i) => i.来源 === '库存');
+
+  const usageRate =
+    selectedIngredients.length > 0
+      ? Math.round((summary.使用的食材.filter((f) =>
+          selectedIngredients.some((i) => loosematch(f, i.名称))
+        ).length / selectedIngredients.length) * 100)
+      : 0;
 
   return (
     <div className={`rounded-2xl shadow-sm border overflow-hidden ${isDone ? 'bg-gray-50 border-gray-100 opacity-70' : 'bg-white border-gray-100'}`}>
       <div className="p-5">
         <div className="flex items-start justify-between mb-1">
-          <h2 className={`text-xl font-bold ${isDone ? 'text-gray-400' : 'text-[#2D2D2D]'}`}>{recipe.name}</h2>
+          <h2 className={`text-xl font-bold ${isDone ? 'text-gray-400' : 'text-[#2D2D2D]'}`}>{summary.菜名}</h2>
           {isDone && (
             <span className="flex-shrink-0 ml-2 text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">✓ 已做</span>
           )}
         </div>
-        <p className="text-gray-400 text-sm mb-4">{recipe.reason}</p>
+        <p className="text-gray-400 text-sm mb-4">{summary.适配理由}</p>
 
         <div className="flex gap-2 flex-wrap mb-4">
           <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
             <Clock size={12} />
-            {recipe.durationMinutes} 分钟
+            {summary.耗时分钟} 分钟
           </span>
           <span className="flex items-center gap-1 bg-gray-50 text-gray-600 text-xs px-3 py-1.5 rounded-full border border-gray-100">
             <BarChart2 size={12} />
-            {recipe.difficulty}
+            {summary.难度}
           </span>
-          {recipe.hasSmoke && (
+          {summary.是否油烟 && (
             <span className="flex items-center gap-1 bg-gray-50 text-gray-500 text-xs px-3 py-1.5 rounded-full border border-gray-100">
               <Wind size={12} />
               有油烟
             </span>
           )}
-          {recipe.ingredientUsageRate >= 0.6 && (
+          {usageRate >= 60 && (
             <span className="flex items-center gap-1 bg-green-50 text-green-600 text-xs px-3 py-1.5 rounded-full border border-green-100">
-              {Math.round(recipe.ingredientUsageRate * 100)}% 食材利用
+              {usageRate}% 食材利用
             </span>
           )}
         </div>
 
-        {/* Ingredient usage stats toggle */}
+        {/* 食材使用情况折叠 */}
         {hasInventoryIngredients && (
           <button
             onClick={() => setStatsOpen((v) => !v)}
@@ -332,23 +401,16 @@ function RecipeCard({
           </button>
         )}
 
-        {/* Usage stats panel */}
         {statsOpen && (
           <div className="space-y-1.5 mb-4 text-sm bg-gray-50 rounded-xl p-3">
             {stats.已用库存食材.length > 0 && (
-              <p className="text-green-700">
-                ✓ 用了你库存的：{stats.已用库存食材.join('、')}
-              </p>
+              <p className="text-green-700">✓ 用了你库存的：{stats.已用库存食材.join('、')}</p>
             )}
             {stats.已用今日输入.length > 0 && (
-              <p className="text-green-600">
-                ✓ 用了今天加的：{stats.已用今日输入.join('、')}
-              </p>
+              <p className="text-green-600">✓ 用了今天加的：{stats.已用今日输入.join('、')}</p>
             )}
             {stats.未用上的库存.length > 0 && (
-              <p className="text-gray-400">
-                ○ 没用上的库存：{stats.未用上的库存.join('、')}
-              </p>
+              <p className="text-gray-400">○ 没用上的库存：{stats.未用上的库存.join('、')}</p>
             )}
             {stats.已用库存食材.length === 0 && stats.已用今日输入.length === 0 && (
               <p className="text-gray-400">（暂无食材使用信息）</p>
@@ -361,6 +423,7 @@ function RecipeCard({
             ⚠️ 部分食材已用完，可能要换一道
           </p>
         )}
+
         <button
           onClick={isDone ? undefined : onSelect}
           disabled={isDone}

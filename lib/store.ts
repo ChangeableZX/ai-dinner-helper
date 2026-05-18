@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import type { Recipe, FatigueLevel, FoodPreference, SelectedIngredient } from '@/types';
+import type { DishSummary, FatigueLevel, FoodPreference, SelectedIngredient } from '@/types';
 
 interface AppStore {
   // Session state — not persisted to localStorage
   selectedIngredients: SelectedIngredient[];
   fatigueLevel: FatigueLevel | null;
   foodPreference: FoodPreference;
-  recipesMap: Record<string, Recipe>;
+  summariesMap: Record<string, DishSummary>;
   selectedRecipeId: string | null;
   excludedDishes: string[];
   retryCount: number;
@@ -25,7 +25,7 @@ interface AppStore {
   removeSelectedIngredient: (名称: string) => void;
   setFatigueLevel: (level: FatigueLevel | null) => void;
   setFoodPreference: (pref: FoodPreference) => void;
-  setRecipes: (recipes: Recipe[]) => void;
+  setSummaries: (summaries: DishSummary[]) => void;
   setSelectedRecipeId: (id: string | null) => void;
   addExcludedDish: (name: string) => void;
   clearExcluded: () => void;
@@ -38,14 +38,14 @@ interface AppStore {
   addDoneRecipe: (id: string) => void;
   setRecentlyUsedIngredientNames: (names: string[]) => void;
   resetSession: () => void;
-  getRecipeById: (id: string) => Recipe | undefined;
+  getSummaryById: (id: string) => DishSummary | undefined;
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
   selectedIngredients: [],
   fatigueLevel: null,
   foodPreference: 'default',
-  recipesMap: {},
+  summariesMap: {},
   selectedRecipeId: null,
   excludedDishes: [],
   retryCount: 0,
@@ -76,10 +76,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setFoodPreference: (pref) => set({ foodPreference: pref }),
 
-  setRecipes: (recipes) => {
-    const map: Record<string, Recipe> = {};
-    for (const r of recipes) map[r.id] = r;
-    set({ recipesMap: map });
+  setSummaries: (summaries) => {
+    const map: Record<string, DishSummary> = {};
+    for (const s of summaries) map[s.id] = s;
+    set({ summariesMap: map });
   },
 
   setSelectedRecipeId: (id) => set({ selectedRecipeId: id }),
@@ -89,8 +89,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   clearExcluded: () => set({ excludedDishes: [] }),
 
-  incrementRetry: () =>
-    set((state) => ({ retryCount: state.retryCount + 1 })),
+  incrementRetry: () => set((state) => ({ retryCount: state.retryCount + 1 })),
 
   resetRetry: () => set({ retryCount: 0 }),
 
@@ -116,7 +115,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       selectedIngredients: [],
       fatigueLevel: null,
       foodPreference: 'default',
-      recipesMap: {},
+      summariesMap: {},
       selectedRecipeId: null,
       excludedDishes: [],
       retryCount: 0,
@@ -128,5 +127,5 @@ export const useAppStore = create<AppStore>((set, get) => ({
       recentlyUsedIngredientNames: [],
     }),
 
-  getRecipeById: (id) => get().recipesMap[id],
+  getSummaryById: (id) => get().summariesMap[id],
 }));

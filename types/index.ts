@@ -64,6 +64,53 @@ export interface Recipe {
   食材使用统计?: IngredientUsageStats;
 }
 
+// ─── 两段式方案新增类型 ────────────────────────────────────────────
+
+/** 推荐 API 返回的精简标题卡（不含步骤、不含食材数量） */
+export interface DishSummary {
+  id: string;
+  菜名: string;
+  适配理由: string;
+  耗时分钟: number;
+  难度: '极简' | '简单' | '中等';
+  是否油烟: boolean;
+  使用的食材: string[];
+}
+
+/** 详情 API 从 LLM 拿到的原始 JSON 结构（中文字段） */
+export interface RawRecipeDetail {
+  菜名: string;
+  厨具: string[];
+  食材: Array<{ 名称: string; 数量: string; 来源: '今日输入' | '库存' | '调料库' }>;
+  预处理: Array<{ 动作: string; 耗时分钟: number }>;
+  步骤: Array<{
+    序号: number;
+    动作: string;
+    耗时分钟: number;
+    关键提示?: string;
+    并行任务?: string;
+  }>;
+}
+
+/** 详情 API 的请求体 */
+export interface RecipeDetailRequest {
+  菜名: string;
+  推荐时的食材: string[];
+  user_profile: {
+    调料库: string[];
+    设备: string[];
+    技能等级: string;
+    辣度: number;
+    忌口: string[];
+    人数: number;
+  };
+  今日食材: SelectedIngredient[];
+  疲劳度: FatigueLevel;
+  食材偏好: FoodPreference;
+}
+
+// ─── 原有类型保留（其他页面依赖）────────────────────────────────────
+
 export interface FeedbackData {
   reasons?: string[];
   note?: string;
@@ -98,14 +145,13 @@ export interface RecommendRequest {
 
 export interface RecommendResponse {
   success: boolean;
-  recipes?: Recipe[];
+  方案?: DishSummary[];
   error?: string;
   suggestion?: string;
-  /** P0 食材仍未覆盖时的 fallback 提示文案 */
   p0Warning?: string;
 }
 
-export type Category = '肉蛋海鲜' | '蔬菜' | '主食' | '调料' | '其他';
+export type Category = '肉蛋海鲜' | '蔬菜' | '主食' | '其他';
 
 export interface InventoryItem {
   id: string;

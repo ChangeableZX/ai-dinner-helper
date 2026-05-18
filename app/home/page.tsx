@@ -61,7 +61,7 @@ export default function HomePage() {
     selectedIngredients, fatigueLevel, foodPreference,
     addSelectedIngredient, removeSelectedIngredient,
     setFatigueLevel, setFoodPreference,
-    setError, setRecipes, resetRetry,
+    setError, setSummaries, resetRetry,
   } = useAppStore();
 
   const [inputValue, setInputValue] = useState('');
@@ -201,7 +201,7 @@ export default function HomePage() {
 
     setError(null);
     resetRetry();
-    setRecipes([]);
+    setSummaries([]);
     router.push('/recommend');
   }
 

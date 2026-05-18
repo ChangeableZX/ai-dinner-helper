@@ -5,13 +5,12 @@ import { ChevronDown, X } from 'lucide-react';
 import type { Category, InventoryItem } from '@/types';
 import { autoCategorize } from '@/lib/auto-categorize';
 
-const CATEGORIES: Category[] = ['肉蛋海鲜', '蔬菜', '主食', '调料', '其他'];
+const CATEGORIES: Category[] = ['肉蛋海鲜', '蔬菜', '主食', '其他'];
 
 const CATEGORY_EMOJI: Record<Category, string> = {
   肉蛋海鲜: '🥩',
   蔬菜:     '🥬',
   主食:     '🍚',
-  调料:     '🧂',
   其他:     '🥘',
 };
 

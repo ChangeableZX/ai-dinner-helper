@@ -5,9 +5,16 @@ const STORAGE_KEY = 'inventory_v1';
 const SOY_KEYWORDS = ['豆腐', '豆干', '腐竹', '豆皮', '千张', '豆泡'];
 
 function migrateItem(item: InventoryItem): InventoryItem {
-  if ((item.类别 as string) !== '蛋白质') return item;
-  const isSoy = SOY_KEYWORDS.some((kw) => item.名称.includes(kw));
-  return { ...item, 类别: isSoy ? '蔬菜' : '肉蛋海鲜' };
+  // Legacy: '蛋白质' was split into '肉蛋海鲜' / '蔬菜'
+  if ((item.类别 as string) === '蛋白质') {
+    const isSoy = SOY_KEYWORDS.some((kw) => item.名称.includes(kw));
+    return { ...item, 类别: isSoy ? '蔬菜' : '肉蛋海鲜' };
+  }
+  // Legacy: '调料' is now a separate concept (seasoning library), not an inventory category
+  if ((item.类别 as string) === '调料') {
+    return { ...item, 类别: '其他' };
+  }
+  return item;
 }
 
 function persist(items: InventoryItem[]): void {

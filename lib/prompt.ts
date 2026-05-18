@@ -1,11 +1,12 @@
-import type { RecommendRequest } from '@/types';
+import type { RecommendRequest, RecipeDetailRequest } from '@/types';
 
-export function buildSystemPrompt(): string {
-  return `你是一个晚餐推荐助手。请严格遵守以下规则：
+// ─── 推荐 API（精简卡片模式，单道菜）─────────────────────────────
 
-【铁律1·禁止虚构】只能使用用户「今日食材」列表 + 「调料库」中的项目。
-绝对禁止推荐需要其他食材的菜。如果食材组合不足以做出像样的菜，
-诚实告知用户并建议补充什么。
+export function buildLightweightSystemPrompt(): string {
+  return `你是一个晚餐推荐助手。请严格遵守以下所有规则，违反任何一条即视为失败。
+
+【铁律1·禁止虚构】只能使用用户「今日食材」列表 + 「调料库」中的项目推荐菜品。
+绝对禁止推荐需要其他食材的菜。"使用的食材"字段中只能填写今日食材列表里存在的名称。
 
 【铁律2·疲劳度适配】
 - fatigue=1（懒到极致）：≤10分钟，步骤≤4步，无复杂技巧
@@ -16,73 +17,38 @@ export function buildSystemPrompt(): string {
 
 【铁律4·设备约束】只能使用用户已有的厨房设备。没有烤箱不能推烤制菜。
 
-【铁律5·历史去重】recent_dishes 列表中的菜不可推荐。exclude 列表中的菜本轮拒绝推荐。
+【铁律5·历史去重】recent_dishes 和 exclude 列表中的菜不可推荐，必须给出完全不同的方案。
 
-【铁律6·核心食材必须使用】
-今日食材中含有蛋白质类（肉、蛋、豆腐等）时，推荐的每道菜必须使用至少一种。
+【铁律6·核心食材优先】若今日食材中有蛋白质类（肉、蛋、豆腐等），推荐的菜应使用至少一种。
 fatigue=1 时允许最简单处理（直接煎/炒/煮）。
-每道菜输出字段 "使用的核心食材": ["..."]（从今日食材的蛋白质类中选，若无则空数组）。
 
-【铁律7·食材最大化利用】
-尽量覆盖更多今日食材。如果有 ≥4 种食材，至少有一道菜用了 60% 以上的食材。
-每道菜输出字段 "食材使用率": 0.85（用到的今日食材数 / 今日食材总数，0-1 的小数）。
+【铁律7·食材最大化利用】尽量覆盖更多今日食材，减少浪费。
 
 【铁律8·食材偏好遵从】
+- "clear_stock"（清库存）：优先使用新鲜度为"该吃了"或"可能过期"的食材
+- "default"（随便）：同等条件下倾向使用"该吃了"的食材，但以菜品合理性为先
+- "fresh_first"（用新鲜的）：优先使用新鲜度为"新鲜"的食材
 
-根据 food_preference 字段调整推荐策略：
+【铁律9·食材来源感知】充分考虑食材来源（库存/今日输入）和新鲜度信息，优化食材搭配。
 
-- "clear_stock"（清库存）：
-  优先使用新鲜度为"该吃了"或"可能过期"的食材
-  如果有可能过期的食材，必须在推荐方案中使用至少 1 种
+【铁律10·输出范围限制】
+本次只生成1道菜的"标题信息"，不要生成详细步骤、预处理或精确食材数量。
+仅输出以下字段：菜名、适配理由(≤15字)、耗时分钟（整数）、难度（极简/简单/中等）、
+是否油烟（true/false）、使用的食材（来自今日食材的名称数组）。
+明确不要输出：厨具、食材数量、步骤详情、关键提示、并行任务。
+仅输出1道菜，不要输出数组包装，直接输出单个 JSON 对象。
 
-- "default"（默认随便）：
-  同等条件下，倾向使用"该吃了"的食材（降低浪费）
-  但不强求，以菜品的合理性为先
+输出格式：
+{"菜名":"...","适配理由":"...（≤15字）","耗时分钟":10,"难度":"极简","是否油烟":true,"使用的食材":["..."]}
 
-- "fresh_first"（用新鲜的）：
-  优先使用新鲜度为"新鲜"的食材
-  尽量避免使用"可能过期"的食材
-
-【铁律9·食材来源感知】
-
-用户食材可能标注了来源（库存/今日输入）和新鲜度（新鲜/该吃了/可能过期）。
-在制定推荐方案时，充分考虑这些信息来优化食材搭配，减少食物浪费。
-
-请输出 2-3 个方案，JSON 格式严格如下：
-{
-  "方案": [
-    {
-      "菜名": "...",
-      "适配理由": "...（一句话，15字以内）",
-      "耗时分钟": 10,
-      "难度": "极简|简单|中等",
-      "是否油烟": true,
-      "厨具": ["..."],
-      "使用的核心食材": ["..."],
-      "食材使用率": 0.8,
-      "食材": [
-        {"名称": "...", "数量": "...", "来源": "今日食材|调料库"}
-      ],
-      "预处理": [
-        {"动作": "...", "耗时秒": 30}
-      ],
-      "步骤": [
-        {
-          "序号": 1,
-          "动作": "...",
-          "耗时秒": 60,
-          "关键提示": "...",
-          "并行任务": "..."
-        }
-      ]
-    }
-  ]
+注意：JSON 必须能被 JSON.parse 解析，不要在 JSON 前后添加任何文字。`;
 }
 
-注意：JSON 必须能被 JSON.parse 解析，不要在 JSON 前后添加任何解释文字。`;
-}
-
-export function buildUserPrompt(req: RecommendRequest): string {
+export function buildSingleDishUserPrompt(
+  req: RecommendRequest,
+  hint: string,
+  exclude: string[],
+): string {
   const fatigueLabelMap: Record<number, string> = {
     1: '懒到极致，10分钟内，最多4步',
     2: '凑合做做，20分钟内，常规家常',
@@ -95,16 +61,14 @@ export function buildUserPrompt(req: RecommendRequest): string {
     fresh_first: '用新鲜的（优先用最近买的）',
   };
 
-  // Format ingredient list with source and freshness info
   const ingList = req.ingredients.map((i) => {
     let desc = i.名称;
-    if (i.来源 === '库存' && i.新鲜度) {
-      desc += `（库存，${i.新鲜度}）`;
-    } else if (i.来源 === '库存') {
-      desc += '（库存）';
-    }
+    if (i.来源 === '库存' && i.新鲜度) desc += `（库存，${i.新鲜度}）`;
+    else if (i.来源 === '库存') desc += '（库存）';
     return desc;
   });
+
+  const allExclude = [...req.recentDishes, ...req.exclude, ...exclude];
 
   return `今日食材：${ingList.join('、')}
 
@@ -120,12 +84,91 @@ export function buildUserPrompt(req: RecommendRequest): string {
 
 疲劳等级：${req.fatigueLevel}（${fatigueLabelMap[req.fatigueLevel]}）
 
-最近吃过（请勿重复）：${req.recentDishes.length > 0 ? req.recentDishes.join('、') : '（无）'}
-本轮已拒绝（请给出不同方案）：${req.exclude.length > 0 ? req.exclude.join('、') : '（无）'}
+已推荐/已拒绝（必须排除，不可重复）：${allExclude.length > 0 ? allExclude.join('、') : '（无）'}
 
-请给出 2-3 个晚餐方案，严格按照 JSON 格式输出。`;
+方向建议（软引导，可以偏离）：${hint}
+
+请推荐1道菜，严格按 JSON 格式输出单个菜品对象。`;
 }
 
-export function buildP0RetryNote(missedP0: string[]): string {
-  return `\n\n⚠️ 特别注意：上一批方案遗漏了这些核心食材：${missedP0.join('、')}。这次每道菜必须使用其中至少一种，哪怕最简单的方式（直接煎/炒/煮）。`;
+// ─── 详情 API（完整菜谱）────────────────────────────────────────────
+
+export function buildDetailSystemPrompt(): string {
+  return `你是一个菜谱详情生成助手。用户已选定了一道菜，你需要生成完整的烹饪方案。
+严格遵守以下所有规则，违反任何一条即视为失败。
+
+【铁律1·禁止虚构】食材只能来自用户的「今日食材」列表或「调料库」，绝对禁止使用列表之外的食材。
+食材来源必须准确标注：
+- 今日食材中"来源=实时输入或临时输入"的：标为"今日输入"
+- 今日食材中"来源=库存"的：标为"库存"
+- 调料库中的：标为"调料库"
+
+【铁律2·疲劳度适配】
+- fatigue=1：步骤≤4步，极简操作，避免复杂技巧
+- fatigue=2：常规家常步骤，清晰易懂
+- fatigue=3：可稍复杂，最多8步
+
+【铁律3·忌口】严格规避忌口列表中的所有食材。
+
+【铁律4·设备约束】厨具只能使用用户已有的厨房设备，没有的设备不可列出。
+
+【铁律5·食材偏好遵从】
+- "clear_stock"：优先使用快过期的食材，有效利用库存
+- "default"：综合判断，合理搭配
+- "fresh_first"：优先使用新鲜食材
+
+【铁律6·时间单位】所有耗时用"分钟"（耗时分钟字段，number类型），可以是小数（如0.5分钟）。不要用秒。
+
+输出格式（严格 JSON，无注释）：
+{
+  "菜名": "...",
+  "厨具": ["..."],
+  "食材": [{"名称":"...","数量":"...","来源":"今日输入|库存|调料库"}],
+  "预处理": [{"动作":"...","耗时分钟":0.5}],
+  "步骤": [{"序号":1,"动作":"...","耗时分钟":1.5,"关键提示":"...","并行任务":"..."}]
+}
+
+注意：关键提示和并行任务若无则省略该字段。JSON 必须能被 JSON.parse 解析。`;
+}
+
+export function buildDetailUserPrompt(req: RecipeDetailRequest): string {
+  const fatigueLabelMap: Record<number, string> = {
+    1: '懒到极致，步骤≤4步，极简操作',
+    2: '凑合做做，常规家常步骤',
+    3: '今天还有劲，可稍复杂',
+  };
+
+  const preferenceLabelMap: Record<string, string> = {
+    clear_stock: '清库存（优先用快过期的）',
+    default: '随便都行（综合判断）',
+    fresh_first: '用新鲜的（优先最近买的）',
+  };
+
+  const ingList = req.今日食材.map((i) => {
+    const sourceLabel = i.来源 === '库存' ? '库存' : '今日输入';
+    let desc = `${i.名称}（${sourceLabel}`;
+    if (i.新鲜度) desc += `，${i.新鲜度}`;
+    desc += '）';
+    return desc;
+  });
+
+  return `目标菜名：${req.菜名}
+推荐阶段规划使用的食材：${req.推荐时的食材.join('、')}
+
+今日可用食材（含来源和新鲜度）：
+${ingList.join('\n')}
+
+用户画像：
+- 调料库：${req.user_profile.调料库.join('、') || '（无）'}
+- 厨房设备：${req.user_profile.设备.join('、') || '（无）'}
+- 技能等级：${req.user_profile.技能等级}
+- 辣度承受度：${req.user_profile.辣度}/5
+- 忌口：${req.user_profile.忌口.join('、') || '（无）'}
+- 用餐人数：${req.user_profile.人数}人
+
+疲劳度：${req.疲劳度}（${fatigueLabelMap[req.疲劳度]}）
+食材偏好：${preferenceLabelMap[req.食材偏好] ?? '随便都行'}
+
+请为「${req.菜名}」生成完整菜谱，严格按 JSON 格式输出。
+所有耗时用"分钟"（小数），食材来源标注"今日输入"、"库存"或"调料库"。`;
 }

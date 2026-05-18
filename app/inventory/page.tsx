@@ -29,7 +29,6 @@ const CATEGORY_TABS: Array<{ value: Category | null; label: string }> = [
   { value: '肉蛋海鲜', label: '🥩 肉蛋海鲜' },
   { value: '蔬菜', label: '🥬 蔬菜' },
   { value: '主食', label: '🌾 主食' },
-  { value: '调料', label: '🧂 调料' },
   { value: '其他', label: '📦 其他' },
 ];
 

@@ -1,13 +1,12 @@
 import type { Category, InventoryItem } from '@/types';
 import { autoCategorize } from './auto-categorize';
 
-export const CATEGORY_ORDER: Category[] = ['肉蛋海鲜', '蔬菜', '主食', '调料', '其他'];
+export const CATEGORY_ORDER: Category[] = ['肉蛋海鲜', '蔬菜', '主食', '其他'];
 
 export const CATEGORY_META: Record<Category, { emoji: string }> = {
   肉蛋海鲜: { emoji: '🥩' },
   蔬菜: { emoji: '🥬' },
   主食: { emoji: '🌾' },
-  调料: { emoji: '🧂' },
   其他: { emoji: '📦' },
 };
 

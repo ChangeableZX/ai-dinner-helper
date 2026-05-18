@@ -54,14 +54,6 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: Category }> = [
   // 兜底（放最后，匹配带"菜""瓜"的长尾食材）
   { keywords: ['菜', '瓜'], category: '蔬菜' },
 
-  // === 调料 ===
-  { keywords: ['盐', '糖', '冰糖', '蜂蜜'], category: '调料' },
-  { keywords: ['醋', '陈醋', '白醋', '米醋', '香醋'], category: '调料' },
-  { keywords: ['酱油', '生抽', '老抽', '蚝油', '豆瓣酱', '甜面酱', '番茄酱', '辣椒酱'], category: '调料' },
-  { keywords: ['料酒', '黄酒', '米酒'], category: '调料' },
-  { keywords: ['油', '色拉油', '花生油', '橄榄油', '香油', '麻油'], category: '调料' },
-  { keywords: ['花椒', '八角', '桂皮', '香叶', '孜然', '胡椒', '茴香'], category: '调料' },
-  { keywords: ['淀粉', '面粉', '生粉'], category: '调料' },
 ];
 
 /**

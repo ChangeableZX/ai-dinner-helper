@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { X, Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { useRecipeCache } from '@/lib/recipe-cache';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
 import { inventoryStore } from '@/lib/inventory-store';
 import { toast } from 'sonner';
@@ -13,7 +14,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 export default function CookingPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { getRecipeById, selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep, addDoneRecipe, setRecentlyUsedIngredientNames } = useAppStore();
+  const { selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep, addDoneRecipe, setRecentlyUsedIngredientNames } = useAppStore();
+  const { getRecipe } = useRecipeCache();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [step, setStep] = useState(0);
@@ -27,8 +29,10 @@ export default function CookingPage() {
 
   useEffect(() => {
     const id = params.id;
-    let r = getRecipeById(id);
+    // 优先从预加载缓存读取
+    let r: Recipe | undefined = getRecipe(id);
     if (!r) {
+      // 兜底：历史记录（"再做一次"流程）
       const history = storageGet<HistoryRecord[]>(STORAGE_KEYS.HISTORY, []);
       r = history.find((h) => h.recipe.id === id)?.recipe;
     }
@@ -37,7 +41,7 @@ export default function CookingPage() {
     } else {
       router.replace('/home');
     }
-  }, [params.id, getRecipeById, router]);
+  }, [params.id, getRecipe, router]);
 
   const allSteps: CookingStep[] = recipe?.cookingSteps ?? [];
   const currentStep = allSteps[step];
