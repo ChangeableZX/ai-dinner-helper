@@ -9,6 +9,7 @@ import { inventoryStore } from '@/lib/inventory-store';
 import { getFreshness, getFreshnessEmoji } from '@/lib/freshness';
 import type { FatigueLevel, FoodPreference, SelectedIngredient, InventoryItem, Category } from '@/types';
 import { groupByCategory } from '@/lib/category-groups';
+import CloudMigrationBanner from '@/components/CloudMigrationBanner';
 
 const FATIGUE_OPTIONS: Array<{
   level: FatigueLevel;
@@ -209,6 +210,9 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen page-enter">
+      {/* Cloud migration banner */}
+      <CloudMigrationBanner />
+
       {/* Expiring banner */}
       {expiringItems.length > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center justify-between gap-3">

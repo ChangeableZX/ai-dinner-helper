@@ -1,5 +1,6 @@
 import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
 import { getUserId } from './user';
+import { getCloudSyncMode } from '@/lib/cloud-sync';
 import type { InventoryItem, Category } from '@/types';
 import type { DbInventoryItem } from './types';
 
@@ -54,9 +55,13 @@ function readLocalItems(): InventoryItem[] {
 
 /**
  * 读取食材库
- * Phase 1: 始终返回 localStorage 数据，Supabase 留待 Prompt 2 切换
+ * cloud 模式: 从 Supabase 读取（已有 getInventoryItemsFromCloud 实现）
+ * local 模式: 从 localStorage 读取
  */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
+  if (isSupabaseEnabled() && getCloudSyncMode() === 'cloud') {
+    return getInventoryItemsFromCloud();
+  }
   return readLocalItems();
 }
 

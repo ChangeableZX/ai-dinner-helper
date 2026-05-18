@@ -5,11 +5,15 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, Plus, Trash2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { SEASONING_GROUP_DEFS, EQUIPMENT_GROUP_DEFS } from '@/lib/profile-groups';
-import { storageGet, storageSet, storageClear, STORAGE_KEYS } from '@/lib/storage';
+import { storageGet, storageClear, STORAGE_KEYS } from '@/lib/storage';
 import { useAppStore } from '@/lib/store';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { UserProfile } from '@/types';
 import { ALL_SEASONINGS } from '@/app/onboarding/page';
+import { saveProfile as persistProfile } from '@/lib/data/profile';
+import { isSupabaseEnabled } from '@/lib/supabase/client';
+import { getCloudSyncMode, setCloudSyncMode, type CloudSyncMode } from '@/lib/cloud-sync';
+import { migrateAllDataToCloud } from '@/lib/data/migrate';
 
 const DEFAULT_SEASONINGS = ALL_SEASONINGS;
 
@@ -42,7 +46,7 @@ export default function ProfilePage() {
     if (!profile) return;
     const next = { ...profile, ...updates };
     setProfile(next);
-    storageSet(STORAGE_KEYS.USER_PROFILE, next);
+    persistProfile(next).catch(() => {});
   }
 
   function toggleSeasoning(s: string) {
@@ -271,6 +275,9 @@ export default function ProfilePage() {
           <ChevronLeft className="rotate-180 text-gray-400" size={16} />
         </button>
 
+        {/* Cloud Sync */}
+        {isSupabaseEnabled() && <CloudSyncSection />}
+
         {/* Reset */}
         <button
           onClick={() => setShowResetDialog(true)}
@@ -304,6 +311,62 @@ export default function ProfilePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function CloudSyncSection() {
+  const [mode, setMode] = useState<CloudSyncMode>(() => getCloudSyncMode());
+  const [syncing, setSyncing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function handleEnable() {
+    setSyncing(true);
+    setErrorMsg(null);
+    const result = await migrateAllDataToCloud();
+    setSyncing(false);
+    if (result.success) {
+      setMode('cloud');
+    } else {
+      setErrorMsg(result.error ?? '同步失败，请重试');
+    }
+  }
+
+  function handleDisable() {
+    setCloudSyncMode('local');
+    setMode('local');
+  }
+
+  return (
+    <Section title="数据同步">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-[#2D2D2D]">
+            {mode === 'cloud' ? '☁️ 云端备份已开启' : mode === 'migrating' ? '⏳ 同步中...' : '📱 仅本地存储'}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {mode === 'cloud'
+              ? '数据已备份到云端，换设备不丢失'
+              : '开启后数据备份到云端，换设备可恢复'}
+          </p>
+        </div>
+        {mode !== 'migrating' && (
+          <button
+            onClick={mode === 'cloud' ? handleDisable : handleEnable}
+            disabled={syncing}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 ${
+              mode === 'cloud'
+                ? 'bg-gray-100 text-gray-500 border border-gray-200'
+                : 'bg-[#FF6B47] text-white'
+            }`}
+          >
+            {syncing ? '同步中...' : mode === 'cloud' ? '关闭' : '开启'}
+          </button>
+        )}
+      </div>
+      {errorMsg && (
+        <p className="text-xs text-red-400 mt-2">{errorMsg}</p>
+      )}
+    </Section>
   );
 }
 

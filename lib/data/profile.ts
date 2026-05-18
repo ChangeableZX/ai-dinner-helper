@@ -1,6 +1,7 @@
 import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
 import { getUserId } from './user';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
+import { getCloudSyncMode } from '@/lib/cloud-sync';
 import type { UserProfile } from '@/types';
 import type { DbUserProfile } from './types';
 
@@ -53,47 +54,63 @@ function fromDbProfile(db: DbUserProfile): UserProfile {
 
 /**
  * 读取用户画像
- * Phase 1: localStorage 优先；Supabase 仅在本地无数据时兜底
+ * cloud 模式: Supabase 优先，写回 localStorage 作缓存
+ * local 模式: localStorage 优先，Supabase 仅在本地为空时兜底
  */
 export async function getProfile(): Promise<UserProfile | null> {
-  const local = storageGet<UserProfile | null>(STORAGE_KEYS.USER_PROFILE, null);
-  if (local) return local;
+  const cloudMode = isSupabaseEnabled() && getCloudSyncMode() === 'cloud';
 
-  if (!isSupabaseEnabled()) return null;
-
-  try {
-    const userId = await getUserId();
-    if (!userId) return null;
-
-    const { data, error } = await supabase!
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (error || !data) return null;
-    return fromDbProfile(data as DbUserProfile);
-  } catch {
-    return null;
+  // local 模式：先查 localStorage
+  if (!cloudMode) {
+    const local = storageGet<UserProfile | null>(STORAGE_KEYS.USER_PROFILE, null);
+    if (local) return local;
   }
+
+  // cloud 模式 / localStorage 为空时，尝试 Supabase
+  if (isSupabaseEnabled()) {
+    try {
+      const userId = await getUserId();
+      if (userId) {
+        const { data, error } = await supabase!
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (!error && data) {
+          const profile = fromDbProfile(data as DbUserProfile);
+          storageSet(STORAGE_KEYS.USER_PROFILE, profile); // 缓存到本地
+          return profile;
+        }
+      }
+    } catch {}
+  }
+
+  // 最终兜底：localStorage
+  return storageGet<UserProfile | null>(STORAGE_KEYS.USER_PROFILE, null);
 }
 
 /**
  * 保存用户画像
- * 始终写 localStorage；Supabase 异步同步，失败静默处理
+ * 始终写 localStorage；cloud 模式下同步等待 Supabase，local 模式异步触发
  */
 export async function saveProfile(profile: UserProfile): Promise<void> {
   storageSet(STORAGE_KEYS.USER_PROFILE, profile);
 
   if (!isSupabaseEnabled()) return;
 
-  getUserId()
-    .then(async (userId) => {
-      if (!userId) return;
-      const { error } = await supabase!
-        .from('user_profiles')
-        .upsert(toDbProfile(profile, userId), { onConflict: 'user_id' });
-      if (error) console.error('[data/profile] Supabase sync failed:', error);
-    })
-    .catch(() => {});
+  const doSync = async () => {
+    const userId = await getUserId();
+    if (!userId) return;
+    const { error } = await supabase!
+      .from('user_profiles')
+      .upsert(toDbProfile(profile, userId), { onConflict: 'user_id' });
+    if (error) console.error('[data/profile] Supabase sync failed:', error);
+  };
+
+  if (getCloudSyncMode() === 'cloud') {
+    await doSync().catch(() => {});
+  } else {
+    doSync().catch(() => {});
+  }
 }
