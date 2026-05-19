@@ -782,23 +782,7 @@ function PreferencesStep({
           </div>
         </div>
       </div>
-      <div className="px-6 py-4 space-y-3">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <span className="text-xl flex-shrink-0">ℹ️</span>
-            <div className="text-sm text-amber-900">
-              <p className="font-medium mb-1">关于你的数据</p>
-              <p className="text-amber-800 leading-relaxed">
-                这是 AI 产品作品集 demo，使用匿名身份。
-                你的食材库、画像、烹饪记录会保存在这个浏览器，
-                <span className="font-medium">换设备不会自动同步</span>。
-              </p>
-              <p className="text-xs text-amber-700 mt-2">
-                💡 之后可以在「我的」里导出数据，在新设备导入
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="px-6 py-4">
         <button onClick={onFinish}
           className="w-full bg-[#FF6B47] text-white text-base font-semibold py-4 rounded-2xl active:scale-95 transition-transform">
           开始用饭饭 🍚
