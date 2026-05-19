@@ -18,7 +18,7 @@
 - **烹饪模式**：步骤卡片式引导，支持左右滑动翻页，完成后收集评分
 - **烹饪记录**：历史时间线，支持"再做一次"重新进入某道菜的流程
 - **数据管理**：用户画像编辑、烹饪统计、跨设备数据导出/导入（JSON）
-- **管理后台**：`/admin/dashboard`，查看推荐质量、用户行为分布等图表（密码：`[ADMIN_PASSWORD]`）
+- **管理后台**：`/admin/dashboard`，查看推荐质量、用户行为分布等图表
 
 ## 几个值得记录的决策
 
@@ -30,21 +30,27 @@
 
 第一段请求返回 3 道菜的摘要（菜名、理由、耗时、难度），同时并发预加载每道菜的详细菜谱。用户看摘要卡片做选择的时候，详情已经在后台拉取完成，点进去几乎瞬开。流式的问题是摘要和详情生成节奏不一致，用户会看到半截文字，体验反而更碎。当前方案的代价是第一屏需要等 3 个并发请求都返回才显示，用骨架屏过渡。
 
-**食材自动分类，调料为什么用硬编码**
+**食材自动分类用规则+长尾，调料用硬编码**
 
-用户录入食材时输入的字符串五花八门——"五花肉""老豆腐""小米椒辣椒"，正则规则覆盖不了，用 AI 自动分类的 ROI 高。调料库是有限枚举，onboarding 时按分类分组呈现，几十个固定条目，用静态 mapping 就够，不需要每次调用 AI 确认"生抽"属于哪一类。不同确定性用不同工具。
+食材分类没有用 AI——用了"本地映射表 + 用户记忆"：常见食材命中本地规则，未命中归"其他"，用户手动修正后记住偏好，下次优先用用户的判断。调料库是有限枚举，几十个固定条目静态 mapping 就够，连规则都不需要。
+
+同样是"分类"问题：开放集合用规则+用户记忆，封闭集合用硬编码，AI 留给真正的不确定性场景。
 
 **为什么选匿名身份而不是完整账号体系**
 
-这是 portfolio demo，不是产品。做完整的邮箱注册、密码找回、session 管理会消耗大量时间，同时让体验门槛变高。匿名 UUID 存在 localStorage，可选同步到 Supabase，用户数据不会因为刷新而丢失。代价是换设备数据不自动同步——这一点在 onboarding 和"我的"页面都有明确说明，并提供了导出/导入工具。
+这是 portfolio demo，不是产品。做完整的邮箱注册、密码找回、session 管理会消耗大量时间，同时让体验门槛变高。匿名 UUID 存在 localStorage，可选同步到 Supabase，用户数据不会因为刷新而丢失。代价是换设备数据不自动同步——这一点在 onboarding 和"我的"页面都有明确说明。为了方便使用，用户下提供了导出/导入工具。
 
-**Mock 数据兜底是刻意设计，不是将就**
+**Mock 数据兜底**
 
-不配置 API Key 时，推荐和菜谱返回预设演示数据，延迟也模拟了真实调用时间。这让功能演示不依赖 API 额度，本地开发也不需要等真实 AI 响应。Admin 图表在真实数据不足时同样显示演示数据，并在界面上用"演示数据"标签明确标注——不是假装数据真实，是诚实地展示功能形态。
+不配置 API Key 时，推荐和菜谱返回预设演示数据，延迟也模拟了真实调用时间。这让功能演示不依赖 API 额度，本地开发也不需要等真实 AI 响应。管理员后台Admin 图表在真实数据不足时同样显示演示数据，并在界面上用"演示数据"标签明确标注——不是假装数据真实，是诚实地展示功能形态。
 
 ## 技术栈
 
-Next.js 16（App Router）+ TypeScript，样式用 Tailwind CSS v4 + shadcn/ui，状态管理用 Zustand，图表用 Recharts，API 路由跑在 Edge Runtime 上。AI 调用走 OpenAI 兼容接口（可接 DeepSeek、智谱等），OCR 用百度智能云通用文字识别，数据持久化用 Supabase（可降级到纯 localStorage）。
+Next.js 16(App Router)+ TypeScript,样式用 Tailwind CSS v4 + shadcn/ui,
+状态管理用 Zustand,图表用 Recharts。所有 API 路由跑在 Edge Runtime 上,
+代码同时兼容 Vercel 和 Cloudflare Pages(通过 `@cloudflare/next-on-pages`)。
+AI 调用走 OpenAI 兼容接口(通过 OPENAI_BASE_URL 切换,当前接 DeepSeek),
+OCR 用百度智能云通用文字识别,数据持久化用 Supabase(可降级到纯 localStorage)。
 
 ## 本地运行
 
@@ -59,7 +65,9 @@ npm run dev
 不填 API Key 直接运行也可以，所有功能走 Mock 模式。如需真实 AI 推荐，在 `.env.local` 里填入 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`（DeepSeek 等兼容接口均可）。
 
 ## 当前状态
+原本仅部署于vercel，但是国内网络无法访问，因此额外兼容了cloudflare
 
-线上版本：[https://d9620ccb.fanfan-8dh.pages.dev](https://d9620ccb.fanfan-8dh.pages.dev)
+线上版本（国内，部署于Cloudflare）：[https://d9620ccb.fanfan-8dh.pages.dev](https://d9620ccb.fanfan-8dh.pages.dev)
+线上版本（国外，部署于Vercel）:[https://ai-dinner-helper.vercel.app](https://ai-dinner-helper.vercel.app/)
 
-这是个人作品集项目，采用匿名身份模式，没有用户注册体系。Admin 后台图表在线上真实数据积累到一定量之前显示演示数据，标注清晰。代码公开，但这不是为贡献者设计的项目。
+
