@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { buildDetailSystemPrompt, buildDetailUserPrompt } from '@/lib/prompt';
 import { parseDetailResponse } from '@/lib/validator';

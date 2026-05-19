@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { recognizeText } from '@/lib/baidu-ocr';
 import { ORDER_PARSE_SYSTEM_PROMPT } from '@/lib/order-recognize-prompt';

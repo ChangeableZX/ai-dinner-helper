@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { buildLightweightSystemPrompt, buildSingleDishUserPrompt } from '@/lib/prompt';
 import { parseSingleDish, extractP0Ingredients, checkP0Coverage } from '@/lib/validator';

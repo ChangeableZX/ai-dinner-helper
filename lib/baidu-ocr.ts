@@ -13,6 +13,9 @@
  * - 多模态能力保留给 V2 的"拍冰箱实物识别"场景
  */
 
+// TODO(edge): On Cloudflare Pages / edge runtime, each cold start resets this module-level
+// variable, so the token is re-fetched on every new isolate. This is functionally correct
+// (token is re-acquired) but costs one extra RTT per cold start. Acceptable for demo scale.
 let cachedToken: { token: string; expireAt: number } | null = null;
 
 async function getAccessToken(): Promise<string> {
