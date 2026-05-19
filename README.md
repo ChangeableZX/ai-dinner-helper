@@ -1,105 +1,65 @@
-# 饭饭 🍚
+# 饭饭
 
-> AI 晚餐决策助手 — 加班晚归也能搞定今晚吃什么
+加班晚归，打开冰箱，家里有这些菜，今晚做什么——这是它要解决的问题。
 
----
+## 为什么做这个
 
-## 本地启动
+这个场景里真正缺的不是菜谱，是决策。食材摆在那里，但没力气想"这三样能搭什么，我家有没有豆瓣酱，现在几点了还来得及做吗"。
 
-```bash
-# 1. 安装依赖
-npm install
+通用 AI 能给菜谱，但不知道你家有没有调料，也不适配你今晚的疲劳程度。你需要把所有上下文一股脑喂给它，它才能给一个凑合的答案。这个过程本身就需要精力，而精力正是你最缺的东西。
 
-# 2. 配置环境变量（不填 API Key 可用 mock 模式演示）
-cp .env.example .env.local
+饭饭的设计目标是：用户只做选择，不做思考。食材在库里，调料登记好，疲劳程度一个滑块，剩下的交给 AI。
 
-# 3. 启动开发服务器
-npm run dev
-```
+## 功能
 
-打开 http://localhost:3000 即可体验。
+- **食材库**：拍收货单 OCR 自动录入，或手动添加；按类别管理，做完菜后标记消耗
+- **AI 推荐**：根据当前食材、调料库、疲劳度、忌口偏好，并发生成 3 道菜的摘要卡片
+- **菜谱详情**：每道菜的食材用量、预处理步骤、烹饪步骤，含步骤计时器
+- **烹饪模式**：步骤卡片式引导，支持左右滑动翻页，完成后收集评分
+- **烹饪记录**：历史时间线，支持"再做一次"重新进入某道菜的流程
+- **数据管理**：用户画像编辑、烹饪统计、跨设备数据导出/导入（JSON）
+- **管理后台**：`/admin/dashboard`，查看推荐质量、用户行为分布等图表（密码：`[ADMIN_PASSWORD]`）
 
-**Mock 模式（无需 API Key）**：`.env.local` 中不填 `OPENAI_API_KEY`，自动返回三道 demo 菜谱（西红柿炒鸡蛋、青菜炒鸡蛋、番茄鸡蛋面），UI 完整可演示。
+## 几个值得记录的决策
 
----
+**食材库和调料库为什么分开**
 
-## 环境变量
+食材是"今天买了什么"，调料是"家里常备什么"。合并会让每次买菜录入时掺入大量无关噪音。分开之后，推荐时 AI 只需要在当前食材上做组合推理，调料库作为固定约束传入，上下文更干净。另一个原因是使用频率不同：食材每周更新，调料库几个月才动一次，放在一起操作路径会互相干扰。
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `OPENAI_API_KEY` | API Key，留空走 mock 模式 | — |
-| `OPENAI_BASE_URL` | 兼容任何 OpenAI 格式 API（DeepSeek/智谱等） | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | 使用的模型 | `gpt-4o-mini` |
+**推荐为什么是两段式而不是流式**
 
----
+第一段请求返回 3 道菜的摘要（菜名、理由、耗时、难度），同时并发预加载每道菜的详细菜谱。用户看摘要卡片做选择的时候，详情已经在后台拉取完成，点进去几乎瞬开。流式的问题是摘要和详情生成节奏不一致，用户会看到半截文字，体验反而更碎。当前方案的代价是第一屏需要等 3 个并发请求都返回才显示，用骨架屏过渡。
+
+**食材自动分类，调料为什么用硬编码**
+
+用户录入食材时输入的字符串五花八门——"五花肉""老豆腐""小米椒辣椒"，正则规则覆盖不了，用 AI 自动分类的 ROI 高。调料库是有限枚举，onboarding 时按分类分组呈现，几十个固定条目，用静态 mapping 就够，不需要每次调用 AI 确认"生抽"属于哪一类。不同确定性用不同工具。
+
+**为什么选匿名身份而不是完整账号体系**
+
+这是 portfolio demo，不是产品。做完整的邮箱注册、密码找回、session 管理会消耗大量时间，同时让体验门槛变高。匿名 UUID 存在 localStorage，可选同步到 Supabase，用户数据不会因为刷新而丢失。代价是换设备数据不自动同步——这一点在 onboarding 和"我的"页面都有明确说明，并提供了导出/导入工具。
+
+**Mock 数据兜底是刻意设计，不是将就**
+
+不配置 API Key 时，推荐和菜谱返回预设演示数据，延迟也模拟了真实调用时间。这让功能演示不依赖 API 额度，本地开发也不需要等真实 AI 响应。Admin 图表在真实数据不足时同样显示演示数据，并在界面上用"演示数据"标签明确标注——不是假装数据真实，是诚实地展示功能形态。
 
 ## 技术栈
 
-- **框架**: Next.js 16 (App Router) + TypeScript
-- **样式**: Tailwind CSS v4 + shadcn/ui
-- **状态**: React Hooks + Zustand v5
-- **数据持久化**: localStorage（含 in-memory 降级兜底）
-- **AI 接口**: OpenAI 兼容接口，通过 `/api/recommend` 后端路由代理
-- **图标**: lucide-react
+Next.js 16（App Router）+ TypeScript，样式用 Tailwind CSS v4 + shadcn/ui，状态管理用 Zustand，图表用 Recharts，API 路由跑在 Edge Runtime 上。AI 调用走 OpenAI 兼容接口（可接 DeepSeek、智谱等），OCR 用百度智能云通用文字识别，数据持久化用 Supabase（可降级到纯 localStorage）。
 
----
-
-## 功能清单
-
-| 模块 | 状态 |
-|------|------|
-| 首次使用引导（4步 Onboarding） | ✅ |
-| 调料库初始化 + 自定义添加 | ✅ |
-| 厨房设备多选 | ✅ |
-| 个人偏好（技能/辣度/忌口/人数） | ✅ |
-| 主页食材输入（chips + 历史快选） | ✅ |
-| 疲劳度三档选择 | ✅ |
-| AI 推荐 + 骨架屏加载 | ✅ |
-| 推荐结果卡片展示 | ✅ |
-| 重新推荐（exclude 已拒绝方案） | ✅ |
-| 菜谱详情（食材/步骤/提示） | ✅ |
-| 预处理勾选 | ✅ |
-| 步骤内嵌计时器（振动反馈） | ✅ |
-| 步骤模式（全屏 + 手势切换 + 进度条） | ✅ |
-| 步骤模式退出确认弹窗 | ✅ |
-| 做完反馈（评分 + 原因 + 文字） | ✅ |
-| 历史记录（时间线 + 再做一次） | ✅ |
-| 我的画像页（全字段可编辑） | ✅ |
-| 重置所有数据（确认弹窗） | ✅ |
-| Mock 模式（无 API Key 可运行） | ✅ |
-
----
-
-## 边界处理索引
-
-| 场景 | 代码位置 |
-|------|----------|
-| 食材为空/未选疲劳度置灰 | `app/home/page.tsx` |
-| 超长食材文本提示 | `app/home/page.tsx` |
-| JSON 解析失败重试1次 | `app/api/recommend/route.ts` |
-| 虚构食材方案过滤 | `lib/validator.ts` |
-| 全方案被过滤提示 | `app/api/recommend/route.ts` |
-| 网络失败重试按钮 | `app/recommend/page.tsx` |
-| 多次重试友好提示 | `app/recommend/page.tsx` |
-| 历史记录为空插画 | `app/history/page.tsx` |
-| localStorage 满降级 | `lib/storage.ts` |
-| 步骤模式中途退出确认 | `app/cooking/[id]/page.tsx` |
-| 计时器结束振动+闪烁 | `app/cooking/[id]/page.tsx` |
-| 近7天历史去重 | `app/recommend/page.tsx` |
-
----
-
-## 部署到 Vercel
+## 本地运行
 
 ```bash
-# 方式一：连接 GitHub 仓库，Vercel 自动部署
-# 在 Vercel 项目设置中配置环境变量即可
-
-# 方式二：CLI 一键部署
-npx vercel deploy
+git clone https://github.com/ChangeableZX/ai-dinner-helper
+cd ai-dinner-helper
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-在 Vercel 控制台的 **Environment Variables** 中填入：
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`（可选）
-- `OPENAI_MODEL`（可选）
+不填 API Key 直接运行也可以，所有功能走 Mock 模式。如需真实 AI 推荐，在 `.env.local` 里填入 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`（DeepSeek 等兼容接口均可）。
+
+## 当前状态
+
+线上版本：[https://d9620ccb.fanfan-8dh.pages.dev](https://d9620ccb.fanfan-8dh.pages.dev)
+
+这是个人作品集项目，采用匿名身份模式，没有用户注册体系。Admin 后台图表在线上真实数据积累到一定量之前显示演示数据，标注清晰。代码公开，但这不是为贡献者设计的项目。
