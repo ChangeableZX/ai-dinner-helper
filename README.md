@@ -46,11 +46,11 @@
 
 ## 技术栈
 
-Next.js 16(App Router)+ TypeScript,样式用 Tailwind CSS v4 + shadcn/ui,
-状态管理用 Zustand,图表用 Recharts。所有 API 路由跑在 Edge Runtime 上,
-代码同时兼容 Vercel 和 Cloudflare Pages(通过 `@cloudflare/next-on-pages`)。
-AI 调用走 OpenAI 兼容接口(通过 OPENAI_BASE_URL 切换,当前接 DeepSeek),
-OCR 用百度智能云通用文字识别,数据持久化用 Supabase(可降级到纯 localStorage)。
+- Next.js 16(App Router)+ TypeScript,样式用 Tailwind CSS v4 + shadcn/ui
+- 状态管理用 Zustand,图表用 Recharts。所有 API 路由跑在 Edge Runtime 上
+- 代码同时兼容 Vercel 和 Cloudflare Pages(通过 `@cloudflare/next-on-pages`)
+- AI 调用走 OpenAI 兼容接口(通过 OPENAI_BASE_URL 切换,当前接 DeepSeek)
+- OCR 用百度智能云通用文字识别,数据持久化用 Supabase(可降级到纯 localStorage)
 
 ## 本地运行
 
@@ -67,7 +67,7 @@ npm run dev
 ## 当前状态
 原本仅部署于vercel，但是国内网络无法访问，因此额外兼容了cloudflare
 
-线上版本（国内，部署于Cloudflare）：[https://d9620ccb.fanfan-8dh.pages.dev](https://d9620ccb.fanfan-8dh.pages.dev)
-线上版本（国外，部署于Vercel）:[https://ai-dinner-helper.vercel.app](https://ai-dinner-helper.vercel.app/)
+- 线上版本（国内，部署于Cloudflare）：[https://d9620ccb.fanfan-8dh.pages.dev](https://d9620ccb.fanfan-8dh.pages.dev)
+- 线上版本（国外，部署于Vercel）:[https://ai-dinner-helper.vercel.app](https://ai-dinner-helper.vercel.app/)
 
 
