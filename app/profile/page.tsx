@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Slider } from '@/components/ui/slider';
 import { SEASONING_GROUP_DEFS, EQUIPMENT_GROUP_DEFS } from '@/lib/profile-groups';
 import { storageGet, storageClear, STORAGE_KEYS } from '@/lib/storage';
@@ -14,6 +15,8 @@ import { saveProfile as persistProfile } from '@/lib/data/profile';
 import { isSupabaseEnabled } from '@/lib/supabase/client';
 import { getCloudSyncMode, setCloudSyncMode, type CloudSyncMode } from '@/lib/cloud-sync';
 import { migrateAllDataToCloud } from '@/lib/data/migrate';
+import { getCurrentAnonId } from '@/lib/user-anon-id';
+import { exportUserData, downloadExportedData, importUserData } from '@/lib/data/export-import';
 
 const DEFAULT_SEASONINGS = ALL_SEASONINGS;
 
@@ -30,6 +33,7 @@ export default function ProfilePage() {
   const { resetSession } = useAppStore();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [cloudMode, setCloudMode] = useState<CloudSyncMode>(() => getCloudSyncMode());
   const [customSeasoning, setCustomSeasoning] = useState('');
   const [customAvoidance, setCustomAvoidance] = useState('');
 
@@ -279,7 +283,10 @@ export default function ProfilePage() {
         </button>
 
         {/* Cloud Sync */}
-        {isSupabaseEnabled() && <CloudSyncSection />}
+        {isSupabaseEnabled() && <CloudSyncSection onModeChange={setCloudMode} />}
+
+        {/* Anonymous Identity + Export/Import */}
+        <AnonymousIdentitySection cloudMode={cloudMode} />
 
         {/* Reset */}
         <button
@@ -317,10 +324,169 @@ export default function ProfilePage() {
   );
 }
 
-function CloudSyncSection() {
+function AnonymousIdentitySection({ cloudMode }: { cloudMode: CloudSyncMode }) {
+  const [anonId] = useState(() =>
+    typeof window !== 'undefined' ? getCurrentAnonId() : '--------',
+  );
+  const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleCopyId() {
+    navigator.clipboard.writeText(anonId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const storageLabel =
+    cloudMode === 'cloud'
+      ? '本浏览器 + 云端'
+      : cloudMode === 'migrating'
+        ? '同步中...'
+        : '仅本浏览器';
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const data = await exportUserData();
+      downloadExportedData(data);
+      const totalCount =
+        data.inventory_items.length + data.cooking_history.length;
+      toast.success(`已导出 ${totalCount} 条数据`, {
+        description: '请保存好这个 JSON 文件，在新设备导入即可',
+      });
+    } catch (e) {
+      toast.error('导出失败', {
+        description: e instanceof Error ? e.message : '未知错误',
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+
+    if (
+      !window.confirm(
+        '确定导入吗？导入的数据会与当前数据合并（不会丢失现有数据）。',
+      )
+    ) {
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const result = await importUserData(file);
+
+      if (result.success) {
+        const total =
+          result.imported.inventory + result.imported.history;
+        const parts: string[] = [];
+        if (result.imported.profile) parts.push('画像');
+        if (result.imported.inventory > 0)
+          parts.push(`食材 ${result.imported.inventory} 条`);
+        if (result.imported.history > 0)
+          parts.push(`历史 ${result.imported.history} 条`);
+        toast.success('导入成功！' + (total === 0 ? '（无新增数据）' : ''), {
+          description: parts.length > 0 ? `已合并：${parts.join('、')}` : undefined,
+        });
+        if (total > 0 || result.imported.profile) {
+          setTimeout(() => window.location.reload(), 1200);
+        }
+      } else {
+        toast.error('导入失败', {
+          description: result.errors.join('；'),
+        });
+      }
+
+      if (result.warnings.length > 0) {
+        result.warnings.forEach((w) => toast.warning(w));
+      }
+    } catch (e) {
+      toast.error('导入失败', {
+        description: e instanceof Error ? e.message : '未知错误',
+      });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">🆔</span>
+        <h3 className="text-sm font-bold text-[#2D2D2D]">关于身份</h3>
+      </div>
+
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-500">身份类型</span>
+          <span className="font-medium">匿名用户</span>
+        </div>
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-gray-500 flex-shrink-0">用户 ID</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-mono text-xs text-gray-600 break-all">{anonId}</span>
+            <button
+              onClick={handleCopyId}
+              className="flex-shrink-0 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md active:scale-95 transition-transform"
+            >
+              {copied ? '已复制' : '📋'}
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">数据存储</span>
+          <span className="text-gray-700">{storageLabel}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <p className="text-xs text-gray-500 mb-3">
+          换设备无法自动同步。可以导出数据，在新设备导入。
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex-1 py-2 text-sm bg-orange-50 text-orange-700 rounded-xl font-medium active:scale-95 transition-transform disabled:opacity-50"
+          >
+            {exporting ? '导出中...' : '📤 导出数据'}
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex-1 py-2 text-sm bg-orange-50 text-orange-700 rounded-xl font-medium active:scale-95 transition-transform disabled:opacity-50"
+          >
+            {importing ? '导入中...' : '📥 导入数据'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CloudSyncSection({ onModeChange }: { onModeChange: (m: CloudSyncMode) => void }) {
   const [mode, setMode] = useState<CloudSyncMode>(() => getCloudSyncMode());
   const [syncing, setSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  function updateMode(m: CloudSyncMode) {
+    setMode(m);
+    onModeChange(m);
+  }
 
   async function handleEnable() {
     setSyncing(true);
@@ -328,7 +494,7 @@ function CloudSyncSection() {
     const result = await migrateAllDataToCloud();
     setSyncing(false);
     if (result.success) {
-      setMode('cloud');
+      updateMode('cloud');
     } else {
       setErrorMsg(result.error ?? '同步失败，请重试');
     }
@@ -336,7 +502,7 @@ function CloudSyncSection() {
 
   function handleDisable() {
     setCloudSyncMode('local');
-    setMode('local');
+    updateMode('local');
   }
 
   return (
