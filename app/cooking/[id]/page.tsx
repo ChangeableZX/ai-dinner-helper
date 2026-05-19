@@ -10,11 +10,16 @@ import { inventoryStore } from '@/lib/inventory-store';
 import { toast } from 'sonner';
 import type { Recipe, HistoryRecord, CookingStep, SelectedIngredient } from '@/types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { saveCookingFeedback } from '@/lib/data/feedback';
+import {
+  trackPageView, trackCookingStarted, trackCookingStepCompleted,
+  trackCookingAbandoned, trackFeedbackSubmitted, trackFeedbackSkipped,
+} from '@/lib/analytics-events';
 
 export default function CookingPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep, addDoneRecipe, setRecentlyUsedIngredientNames } = useAppStore();
+  const { selectedIngredients, fatigueLevel, setCookingStep, currentCookingStep, addDoneRecipe, setRecentlyUsedIngredientNames, currentSessionId } = useAppStore();
   const { getRecipe } = useRecipeCache();
 
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -38,6 +43,8 @@ export default function CookingPage() {
     }
     if (r) {
       setRecipe(r);
+      trackPageView('cooking', { dish_name: r.name });
+      trackCookingStarted(r.name);
     } else {
       router.replace('/home');
     }
@@ -57,6 +64,7 @@ export default function CookingPage() {
     const next = step + 1;
     setStep(next);
     setCookingStep(next);
+    if (recipe) trackCookingStepCompleted(recipe.name, next);
   }
 
   function prevStep() {
@@ -111,7 +119,10 @@ export default function CookingPage() {
           第 <span className="text-[#FF6B47] font-bold">{step + 1}</span> / {allSteps.length} 步
         </span>
         <button
-          onClick={() => setShowExitDialog(true)}
+          onClick={() => {
+            if (recipe) trackCookingAbandoned(recipe.name, step, allSteps.length);
+            setShowExitDialog(true);
+          }}
           className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-400 active:scale-95 transition-transform"
         >
           <X size={18} />
@@ -209,6 +220,7 @@ export default function CookingPage() {
           recipe={recipe}
           selectedIngredients={selectedIngredients}
           fatigueLevel={fatigueLevel ?? 2}
+          sessionId={currentSessionId}
           onDismiss={handleFeedbackDismiss}
         />
       )}
@@ -321,11 +333,12 @@ const FEEDBACK_BAD_REASONS = [
 ];
 
 function FeedbackModal({
-  recipe, selectedIngredients, fatigueLevel, onDismiss,
+  recipe, selectedIngredients, fatigueLevel, sessionId, onDismiss,
 }: {
   recipe: Recipe;
   selectedIngredients: SelectedIngredient[];
   fatigueLevel: number;
+  sessionId: string | null;
   onDismiss: (usedIngredientNames: string[]) => void;
 }) {
   const [rating, setRating] = useState<'good' | 'ok' | 'bad' | null>(null);
@@ -400,17 +413,37 @@ function FeedbackModal({
 
     const history = storageGet<HistoryRecord[]>(STORAGE_KEYS.HISTORY, []);
     storageSet(STORAGE_KEYS.HISTORY, [record, ...history].slice(0, 100));
+
+    // 云端反馈写入（fire-and-forget）
+    saveCookingFeedback({
+      sessionId,
+      dishName: recipe.name,
+      rating,
+      issueTags: reasons,
+      freeText: note || undefined,
+      ingredientsUsedUp: usedNames,
+      completed: true,
+    }).catch(() => {});
+
+    // 埋点
+    trackFeedbackSubmitted(recipe.name, rating ?? 'skipped', reasons.length > 0);
+
     onDismiss(usedNames);
   }
 
+  function handleDismissNoRating() {
+    trackFeedbackSkipped(recipe.name);
+    onDismiss([]);
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-end z-50" onClick={() => onDismiss([])}>
+    <div className="fixed inset-0 bg-black/40 flex items-end z-50" onClick={handleDismissNoRating}>
       <div
         className="relative w-full max-w-[480px] mx-auto bg-[#FAF7F2] rounded-t-3xl p-6 pb-10 overflow-y-auto max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          onClick={() => onDismiss([])}
+          onClick={handleDismissNoRating}
           className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 active:scale-95 transition-transform"
         >
           <X size={16} />
@@ -517,7 +550,7 @@ function FeedbackModal({
         )}
 
         <button
-          onClick={rating ? handleSubmit : () => onDismiss([])}
+          onClick={rating ? handleSubmit : () => { trackFeedbackSkipped(recipe.name); onDismiss([]); }}
           className={`w-full py-4 rounded-2xl font-semibold text-base active:scale-[0.98] transition-all ${
             rating
               ? 'bg-[#FF6B47] text-white shadow-lg shadow-[#FF6B47]/30'

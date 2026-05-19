@@ -14,6 +14,7 @@ import StatsBar from './components/StatsBar';
 import ItemCard from './components/ItemCard';
 import EmptyState from './components/EmptyState';
 import AddItemDialog from './components/AddItemDialog';
+import { trackPageView } from '@/lib/analytics-events';
 
 type FilterTab = '全部' | '新鲜' | '该吃了' | '可能过期';
 
@@ -51,6 +52,7 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
+    trackPageView('inventory');
     inventoryStore.cleanup();
     refresh();
     const raw = sessionStorage.getItem('newly_added_ids');

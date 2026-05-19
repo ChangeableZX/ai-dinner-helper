@@ -1,11 +1,15 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Plus, X, ChevronLeft, ChevronDown } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { storageSet, STORAGE_KEYS } from '@/lib/storage';
 import type { UserProfile } from '@/types';
+import {
+  trackPageView, trackOnboardingStarted, trackOnboardingCompleted,
+  trackOnboardingStepCompleted,
+} from '@/lib/analytics-events';
 
 // ─── Static data ─────────────────────────────────────────────────
 
@@ -152,6 +156,18 @@ const SKILL_OPTIONS: Array<{ value: UserProfile['skillLevel']; label: string; de
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
+  const startTimeRef = useRef(Date.now());
+
+  useEffect(() => {
+    trackPageView('onboarding');
+    trackOnboardingStarted();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const stepNames = ['welcome', 'preset', 'review', 'avoidance', 'preferences'];
+    if (step > 0) trackOnboardingStepCompleted(step, stepNames[step] ?? `step_${step}`);
+  }, [step]);
 
   // Kitchen setup (steps 1-2)
   const [seasonings, setSeasonings] = useState<string[]>(PRESETS.normal.seasonings as unknown as string[]);
@@ -185,6 +201,7 @@ export default function OnboardingPage() {
       setupCompleted: true,
     };
     storageSet(STORAGE_KEYS.USER_PROFILE, profile);
+    trackOnboardingCompleted(Date.now() - startTimeRef.current);
     router.replace('/home');
   }
 

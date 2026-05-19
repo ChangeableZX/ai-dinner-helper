@@ -10,6 +10,7 @@ import { getFreshness, getFreshnessEmoji } from '@/lib/freshness';
 import type { FatigueLevel, FoodPreference, SelectedIngredient, InventoryItem, Category } from '@/types';
 import { groupByCategory } from '@/lib/category-groups';
 import CloudMigrationBanner from '@/components/CloudMigrationBanner';
+import { trackPageView } from '@/lib/analytics-events';
 
 const FATIGUE_OPTIONS: Array<{
   level: FatigueLevel;
@@ -77,6 +78,10 @@ export default function HomePage() {
 
   const isInputTooLong = inputValue.length > 200;
   const ingredientNames = selectedIngredients.map((i) => i.名称);
+
+  useEffect(() => {
+    trackPageView('home');
+  }, []);
 
   useEffect(() => {
     const active = inventoryStore.getActive();

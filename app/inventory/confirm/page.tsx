@@ -9,6 +9,7 @@ import { inventoryStore } from '@/lib/inventory-store';
 import { getIngredientEmoji } from '@/lib/emoji-map';
 import { autoCategorize } from '@/lib/auto-categorize';
 import { storageGet, storageSet, STORAGE_KEYS } from '@/lib/storage';
+import { trackOrderRecognitionConfirmed } from '@/lib/analytics-events';
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -261,7 +262,10 @@ export default function ConfirmPage() {
       }
     }
 
-    // 3. Toast
+    // 3. 埋点
+    trackOrderRecognitionConfirmed(toAddIng.length, toAddSeason.length);
+
+    // 4. Toast
     const parts: string[] = [];
     if (toAddIng.length > 0) {
       parts.push(mergedAny

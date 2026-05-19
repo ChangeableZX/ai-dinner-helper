@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist } from 'next/font/google';
 import { Toaster } from 'sonner';
 import './globals.css';
+import ActivityTracker from '@/components/ActivityTracker';
 
 const geist = Geist({
   variable: '--font-geist-sans',
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body className="min-h-full bg-gray-200">
         {/* Centred phone-width container, desktop sees grey flanks */}
         <div className="mx-auto min-h-screen max-w-[480px] bg-[#FAF7F2] relative overflow-x-hidden">
+          <ActivityTracker />
           {children}
         </div>
         <Toaster position="top-center" richColors />

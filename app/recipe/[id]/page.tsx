@@ -7,6 +7,7 @@ import { useAppStore } from '@/lib/store';
 import { useRecipeCache, toRecipe } from '@/lib/recipe-cache';
 import { storageGet, STORAGE_KEYS } from '@/lib/storage';
 import type { Recipe, HistoryRecord, DishSummary } from '@/types';
+import { trackPageView, trackRecipeDetailViewed } from '@/lib/analytics-events';
 
 const WAITING_MESSAGES = [
   '正在为你写菜谱…',
@@ -35,6 +36,8 @@ export default function RecipePage() {
     if (cached) {
       setLocalRecipe(cached);
       setPrepDone(new Array(cached.prepSteps.length).fill(false));
+      trackPageView('recipe_detail', { dish_name: cached.name });
+      trackRecipeDetailViewed(cached.name, true);
       return;
     }
 
@@ -45,6 +48,8 @@ export default function RecipePage() {
       setLocalRecipe(historyRecipe);
       setSelectedRecipeId(id);
       setPrepDone(new Array(historyRecipe.prepSteps.length).fill(false));
+      trackPageView('recipe_detail', { dish_name: historyRecipe.name });
+      trackRecipeDetailViewed(historyRecipe.name, false);
       return;
     }
 

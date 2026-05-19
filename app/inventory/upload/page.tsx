@@ -78,6 +78,13 @@ export default function UploadPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? '识别失败，请重试');
+
+      const { trackOrderRecognized } = await import('@/lib/analytics-events');
+      trackOrderRecognized(
+        (data.食材?.length ?? 0) + (data.调料?.length ?? 0),
+        false,
+      );
+
       sessionStorage.setItem('ocr_pending_result', JSON.stringify({
         食材: data.食材 ?? [],
         调料: data.调料 ?? [],
@@ -85,6 +92,8 @@ export default function UploadPage() {
       }));
       router.push('/inventory/confirm');
     } catch (err: unknown) {
+      const { trackOrderRecognized } = await import('@/lib/analytics-events');
+      trackOrderRecognized(0, true);
       setErrorMsg(err instanceof Error ? err.message : '识别失败，请重试');
       setPhase('error');
     }

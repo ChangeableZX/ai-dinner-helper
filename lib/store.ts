@@ -16,6 +16,8 @@ interface AppStore {
   currentCookingStep: number;
   doneRecipeIds: string[];
   recentlyUsedIngredientNames: string[];
+  // 推荐会话 ID（由 /api/log-session 返回，用于关联 cooking_feedback）
+  currentSessionId: string | null;
 
   // Derived convenience getter
   getIngredientNames: () => string[];
@@ -37,6 +39,7 @@ interface AppStore {
   setCookingStep: (step: number) => void;
   addDoneRecipe: (id: string) => void;
   setRecentlyUsedIngredientNames: (names: string[]) => void;
+  setCurrentSessionId: (id: string | null) => void;
   resetSession: () => void;
   getSummaryById: (id: string) => DishSummary | undefined;
 }
@@ -55,6 +58,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   currentCookingStep: 0,
   doneRecipeIds: [],
   recentlyUsedIngredientNames: [],
+  currentSessionId: null,
 
   getIngredientNames: () => get().selectedIngredients.map((i) => i.名称),
 
@@ -110,6 +114,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setRecentlyUsedIngredientNames: (names) => set({ recentlyUsedIngredientNames: names }),
 
+  setCurrentSessionId: (id) => set({ currentSessionId: id }),
+
   resetSession: () =>
     set({
       selectedIngredients: [],
@@ -125,6 +131,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       currentCookingStep: 0,
       doneRecipeIds: [],
       recentlyUsedIngredientNames: [],
+      currentSessionId: null,
     }),
 
   getSummaryById: (id) => get().summariesMap[id],

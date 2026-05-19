@@ -266,6 +266,9 @@ export default function ProfilePage() {
           </div>
         </Section>
 
+        {/* Stats Link */}
+        <StatsEntryCard router={router} />
+
         {/* History Link */}
         <button
           onClick={() => router.push('/history')}
@@ -367,6 +370,34 @@ function CloudSyncSection() {
         <p className="text-xs text-red-400 mt-2">{errorMsg}</p>
       )}
     </Section>
+  );
+}
+
+function StatsEntryCard({ router }: { router: ReturnType<typeof useRouter> }) {
+  const [total, setTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const { storageGet, STORAGE_KEYS } = await import('@/lib/storage');
+      const history = storageGet<Array<{ rating?: string | null }>>(STORAGE_KEYS.HISTORY, []);
+      setTotal(history.length);
+    }
+    load();
+  }, []);
+
+  return (
+    <button
+      onClick={() => router.push('/profile/stats')}
+      className="w-full bg-white rounded-2xl p-4 text-left flex items-center justify-between border border-gray-100 active:scale-[0.98] transition-transform"
+    >
+      <div>
+        <p className="text-sm font-medium text-[#2D2D2D]">📊 我的烹饪数据</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {total != null && total > 0 ? `你已经做了 ${total} 道菜` : '查看你的烹饪足迹'}
+        </p>
+      </div>
+      <ChevronLeft className="rotate-180 text-gray-400" size={16} />
+    </button>
   );
 }
 

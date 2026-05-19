@@ -7,6 +7,12 @@ import { useAppStore } from '@/lib/store';
 import { useRecipeCache, toRecipe } from '@/lib/recipe-cache';
 import { storageGet, STORAGE_KEYS } from '@/lib/storage';
 import type { DishSummary, UserProfile, RecommendResponse, SelectedIngredient } from '@/types';
+import { getCurrentAnonId } from '@/lib/user-anon-id';
+import { getCloudSyncMode } from '@/lib/cloud-sync';
+import {
+  trackPageView, trackRecommendStarted, trackRecommendCompleted,
+  trackRecommendFailed, trackRecommendRegenerated, trackDishSelected,
+} from '@/lib/analytics-events';
 
 const LOADING_MESSAGES = [
   '翻翻你的厨房…',
@@ -110,12 +116,18 @@ export default function RecommendPage() {
     selectedIngredients, fatigueLevel, foodPreference, summariesMap, excludedDishes, retryCount,
     isLoading, error, p0Warning, setSummaries, setLoading, setError, setP0Warning,
     addExcludedDish, incrementRetry, setSelectedRecipeId, doneRecipeIds, recentlyUsedIngredientNames,
+    setCurrentSessionId,
   } = useAppStore();
 
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
   const fetchInitiated = useRef(false);
+  const recommendStartTime = useRef<number>(0);
 
   const ingredientNames = selectedIngredients.map((i) => i.名称);
+
+  useEffect(() => {
+    trackPageView('recommend');
+  }, []);
 
   useEffect(() => {
     if (!selectedIngredients.length || !fatigueLevel) {
@@ -146,6 +158,8 @@ export default function RecommendPage() {
     setLoading(true);
     setError(null);
     setP0Warning(null);
+    recommendStartTime.current = Date.now();
+    trackRecommendStarted(selectedIngredients.length, fatigueLevel ?? 0);
 
     try {
       const profile = storageGet<UserProfile | null>(STORAGE_KEYS.USER_PROFILE, null)!;
@@ -190,16 +204,48 @@ export default function RecommendPage() {
 
       const data: RecommendResponse = await res.json();
 
+      const durationMs = Date.now() - recommendStartTime.current;
+
       if (!data.success || !data.方案?.length) {
         setError(data.error ?? '这些食材暂时想不到好方案');
+        trackRecommendFailed(durationMs, data.error ?? 'no_dishes');
       } else {
         setSummaries(data.方案);
         if (data.p0Warning) setP0Warning(data.p0Warning);
+        trackRecommendCompleted(durationMs, data.方案.length);
 
         // 推荐结果出来后，立即并发后台预加载所有详情
         startPreloading(data.方案, selectedIngredients, fatigueLevel!, foodPreference, profile);
+
+        // 会话日志（fire-and-forget，仅云端模式）
+        if (getCloudSyncMode() === 'cloud') {
+          const anonId = getCurrentAnonId();
+          fetch('/api/log-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              anonId,
+              sessionData: {
+                ingredients: selectedIngredients,
+                fatigueLevel: fatigueLevel!,
+                foodPreference,
+                dishes: data.方案,
+                durationMs,
+              },
+            }),
+          })
+            .then((r) => r.json())
+            .then((d: { ok: boolean; session_id?: string }) => {
+              if (d.ok && d.session_id) {
+                setCurrentSessionId(d.session_id);
+              }
+            })
+            .catch((e) => console.warn('[Session] Failed to log:', e));
+        }
       }
     } catch {
+      const durationMs = Date.now() - recommendStartTime.current;
+      trackRecommendFailed(durationMs, 'network_error');
       setError('刚才走神了，再试一次');
     } finally {
       setLoading(false);
@@ -210,12 +256,15 @@ export default function RecommendPage() {
     const currentNames = Object.values(summariesMap).map((s) => s.菜名);
     currentNames.forEach((n) => addExcludedDish(n));
     incrementRetry();
+    trackRecommendRegenerated(retryCount + 1);
     useRecipeCache.getState().clear();
     setSummaries([]);
     fetchRecommendations();
   }
 
   function handleSelect(summary: DishSummary) {
+    const idx = Object.values(summariesMap).findIndex((s) => s.id === summary.id);
+    trackDishSelected(summary.菜名, idx);
     setSelectedRecipeId(summary.id);
     router.push(`/recipe/${summary.id}`);
   }
